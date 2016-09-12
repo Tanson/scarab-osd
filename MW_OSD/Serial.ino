@@ -1,8 +1,10 @@
  
-#if defined NAZA
-  #define SERIALBUFFERSIZE 75
+#if defined PROTOCOL_MAVLINK
+  #define SERIALBUFFERSIZE 150
+#elif defined NAZA
+  #define SERIALBUFFERSIZE 250
 #elif defined GPSOSD
-  #define SERIALBUFFERSIZE 100
+  #define SERIALBUFFERSIZE 250
 #else
   #define SERIALBUFFERSIZE 150
 #endif
@@ -14,6 +16,22 @@ static uint8_t cmdMSP;
 static uint8_t rcvChecksum;
 static uint8_t readIndex;
 uint8_t txChecksum;
+
+#if defined PROTOCOL_MAVLINK
+  #include "MAVLINK.h"
+#endif 
+
+#if defined PROTOCOL_LTM
+  #include "LTM.h"
+#endif 
+
+#if defined PROTOCOL_KISS
+  #include "KISS.h"
+#endif 
+
+#if defined PROTOCOL_SKYTRACK
+  #include "SKYTRACK.h"
+#endif 
 
 uint32_t read32() {
   uint32_t t = read16();
@@ -31,7 +49,13 @@ uint8_t read8()  {
   return serialBuffer[readIndex++];
 }
 
+#define skip8() {readIndex++;}
+#define skip16() {readIndex+=2;}
+#define skip32() {readIndex+=4;}
+#define skipn(n) {readIndex+=n;}
+
 void mspWriteRequest(uint8_t mspCommand, uint8_t txDataSize){
+  //return;
   Serial.write('$');
   Serial.write('M');
   Serial.write('<');
@@ -52,6 +76,13 @@ void mspWrite16(uint16_t t){
   mspWrite8(t>>8);
 }
 
+void mspWrite32(uint32_t t){
+  mspWrite8(t);
+  mspWrite8(t>>8);
+  mspWrite8(t>>16);
+  mspWrite8(t>>24);
+}
+
 void mspWriteChecksum(){
   Serial.write(txChecksum);
 }
@@ -61,8 +92,8 @@ void mspWriteChecksum(){
 void serialMSPCheck()
 {
   readIndex = 0;
-  #ifdef MSPACTIVECHECK
-    timer.MSP_active=MSPACTIVECHECK; // getting something on serial port
+  #ifdef ALARM_MSP
+    timer.MSP_active=ALARM_MSP; // getting something on serial port
   #endif
 
   if (cmdMSP == MSP_OSD) {
@@ -138,7 +169,9 @@ void serialMSPCheck()
                     
   }
 
-#ifndef GPSOSD
+
+#ifdef PROTOCOL_MSP
+
   if (cmdMSP==MSP_IDENT)
   {
     flags.ident=1;
@@ -155,21 +188,25 @@ void serialMSPCheck()
       MwSensorPresent=GPSSENSOR|BAROMETER|MAGNETOMETER|ACCELEROMETER;
     #endif  
     armed = (MwSensorActive & mode.armed) != 0;
-
+    FCProfile = read8();
+    if (!configMode){
+      CurrentFCProfile=FCProfile;
+      PreviousFCProfile=FCProfile;
+     }
   }
 
   if (cmdMSP==MSP_RC)
   {
-    for(uint8_t i=0;i<8;i++)
+    for(uint8_t i=1;i<RCCHANNELS+1;i++)
       MwRcData[i] = read16();
     handleRawRC();
   }
 
   if (cmdMSP==MSP_RAW_GPS)
   {
-    #ifdef GPSACTIVECHECK
-     timer.GPS_active=GPSACTIVECHECK;
-    #endif //GPSACTIVECHECK
+    #ifdef ALARM_GPS
+     timer.GPS_active=ALARM_GPS;
+    #endif //ALARM_GPS
     uint8_t GPS_fix_temp=read8();
     if (GPS_fix_temp){
       GPS_fix=1;
@@ -261,31 +298,71 @@ void serialMSPCheck()
     MwVBat=read8();
     pMeterSum=read16();
     MwRssi = read16();
-    MWAmperage = read16();
+    MWAmperage = (int16_t)read16();
  }
+
+#ifdef MENU_SERVO  
+  if (cmdMSP==MSP_SERVO_CONF)
+  {
+    for (uint8_t i = 0; i < MAX_SERVOS; i++) {
+      for (uint8_t ii = 0; ii < 5; ii++) {
+        if (ii==3)
+          servo.settings[ii][i] =read8();
+        else
+          servo.settings[ii][i] =read16();
+      }
+   }
+   modeMSPRequests &=~ REQ_MSP_SERVO_CONF;
+ }
+#endif //MENU_SERVO   
+
+#ifdef MENU_FIXEDWING
+  if (cmdMSP==MSP_FW_CONFIG)
+  {
+    cfg.fw_althold_dir=read8();
+    cfg.fw_gps_maxcorr=read16();
+    cfg.fw_gps_rudder=read16();
+    cfg.fw_gps_maxclimb=read16();
+    cfg.fw_gps_maxdive=read16();
+    cfg.fw_climb_throttle=read16();
+    cfg.fw_cruise_throttle=read16();
+    cfg.fw_idle_throttle=read16();
+    cfg.fw_scaler_throttle=read16();
+    cfg.fw_roll_comp=read32();
+    cfg.fw_rth_alt=read8();
+    for(uint8_t i = 0; i < 4; i++) {
+      read32();
+    }
+    modeMSPRequests &=~ REQ_MSP_FW_CONFIG;
+  }
+#endif // MENU_FIXEDWING
 
 #ifdef USE_FC_VOLTS_CONFIG
   if (cmdMSP==MSP_MISC)
   {
-    read16(); //ignore: midrc
+    // Multiple skip8/skip16 (readIndex increments) seems to be
+    // collapsed into single addition by the compiler.
 
-    read16(); //ignore: minthrottle
-    read16(); //ignore: maxthrottle
-    read16(); //ignore: mincommand
+    skip16(); //ignore: midrc
 
-    read16(); //ignore: failsafe_throttle
+    skip16(); //ignore: minthrottle
+    skip16(); //ignore: maxthrottle
+    skip16(); //ignore: mincommand
+
+    skip16(); //ignore: failsafe_throttle
     
-    read8(); //ignore: gps_type
-    read8(); //ignore: gps_baudrate
-    read8(); //ignore: gps_ubx_sbas
+    skip8(); //ignore: gps_type
+    skip8(); //ignore: gps_baudrate
+    skip8(); //ignore: gps_ubx_sbas
 
-    read8(); //ignore: multiwiiCurrentMeterOutput
-    read8(); //ignore: rssi_channel
-    read8(); //ignore: 0
+    skip8(); //ignore: multiwiiCurrentMeterOutput
+    skip8(); //ignore: rssi_channel
+    skip8(); //ignore: 0
 
-    read16(); //ignore: mag_declination
+    skip16(); //ignore: mag_declination
 
-    read8(); //ignore: vbatscale
+    skip8(); //ignore: vbatscale
+
     MvVBatMinCellVoltage = read8(); //vbatmincellvoltage
     MvVBatMaxCellVoltage = read8(); //vbatmaxcellvoltage
     MvVBatWarningCellVoltage = read8(); //vbatwarningcellvoltage
@@ -293,10 +370,10 @@ void serialMSPCheck()
   }
 #endif //USE_FC_VOLTS_CONFIG
 
-#if defined (BASEFLIGHT20150627)  
+#if defined (CORRECT_MSP_BF1)  
   if (cmdMSP==MSP_CONFIG)
   {
-    for(uint8_t i=0; i<SETCONGFIG; i++) {
+    for(uint8_t i=0; i<25; i++) {
       bfconfig[i]=read8();
     }
     rollRate = bfconfig[18];
@@ -307,7 +384,7 @@ void serialMSPCheck()
   
   if (cmdMSP==MSP_RC_TUNING)
   {
-    #ifdef CLEANFLIGHT190
+    #ifdef CORRECT_MSP_CF2
       rcRate8 = read8();
       rcExpo8 = read8();
       rollRate = read8();
@@ -319,7 +396,7 @@ void serialMSPCheck()
       tpa_breakpoint16 = read16();
       rcYawExpo8 = read8();
       modeMSPRequests &=~ REQ_MSP_RC_TUNING;
-    #elif defined CLEANFLIGHT180
+    #elif defined CORRECT_MSP_CF1
       rcRate8 = read8();
       rcExpo8 = read8();
       rollRate = read8();
@@ -341,7 +418,47 @@ void serialMSPCheck()
       modeMSPRequests &=~ REQ_MSP_RC_TUNING;
     #endif
   }
+#ifdef USE_MSP_PIDNAMES
+  if (cmdMSP==MSP_PIDNAMES)
+  {
+      // parse buffer and fill menu_pid[]. We need to receive all bytes, but store only ones that we need
+      
+      uint8_t pn_index = 0, avail = (PIDNAME_BUFSIZE - 1), c;
+      uint8_t *out = (uint8_t *)menu_pid;
 
+      for(uint8_t i = 0; i<dataSize; i++) {
+        c = read8();
+
+#ifdef MENU_PID_VEL
+        if((pn_index != 5) && (pn_index != 6) && (pn_index <= 9)) // 5, 6 and >9 are skipped
+#else
+        if((pn_index != 5) && (pn_index != 6) && (pn_index <= 8)) // 5, 6 and >8 are skipped
+#endif
+        {
+          if(c == ';')
+          {
+             *out = 0;
+
+              out += avail + 1;
+              
+              avail = PIDNAME_BUFSIZE - 1;
+          }
+          else if(avail > 0)
+          {
+             *out++ = c;
+             --avail;
+          }
+        }
+
+        if(c == ';')
+        {
+           ++pn_index;
+        }
+      
+      }
+      modeMSPRequests &= ~REQ_MSP_PIDNAMES;
+  }
+#endif
   if (cmdMSP==MSP_PID)
   {
     for(uint8_t i=0; i<PIDITEMS; i++) {
@@ -352,6 +469,20 @@ void serialMSPCheck()
     modeMSPRequests &=~ REQ_MSP_PID;
 
   }
+
+#ifdef ENABLE_MSP_SAVE_ADVANCED
+  if (cmdMSP == MSP_PID_CONTROLLER)
+  {
+    PIDController = read8();
+    modeMSPRequests &=~ REQ_MSP_PID_CONTROLLER;
+  }
+
+  if (cmdMSP == MSP_LOOP_TIME)
+  {
+    LoopTime = read16();
+    modeMSPRequests &=~ REQ_MSP_LOOP_TIME;
+  }
+#endif
 
 #ifdef HAS_ALARMS
   if (cmdMSP == MSP_ALARMS)
@@ -371,16 +502,28 @@ void serialMSPCheck()
     uint8_t remaining = dataSize;
     uint8_t len = 0;
 
-    mode.armed = 0;
-    mode.stable = 0;
-    mode.baro = 0;
-    mode.mag = 0;
-    mode.gpshome = 0;
-    mode.gpshold = 0;
-    mode.llights = 0;
-    mode.camstab = 0;
-    mode.osd_switch = 0;
-    mode.air = 0;
+    struct boxes {
+        void    *var;
+        uint8_t size;
+        const char *name;
+    } boxnames[] = {
+        { &mode.armed,      8,  PSTR("ARM") },
+        { &mode.stable,     8,  PSTR("ANGLE") },
+        { &mode.horizon,    8,  PSTR("HORIZON") },
+        { &mode.mag,        8,  PSTR("MAG") },
+        { &mode.baro,       8,  PSTR("BARO") },
+        { &mode.llights,    16, PSTR("LLIGHTS") },
+        { &mode.camstab,    16, PSTR("CAMSTAB") },
+        { &mode.air,        32, PSTR("AIR MODE") },
+        { &mode.acroplus,   32, PSTR("ACRO PLUS") },
+        { &mode.gpshome,    16, PSTR("GPS HOME") },
+        { &mode.gpshold,    16, PSTR("GPS HOLD") },
+        { &mode.passthru,   16, PSTR("PASSTHRU") },
+        { &mode.osd_switch, 32, PSTR("OSD SW") },
+        { NULL,             0,  NULL },
+    };
+
+    memset(&mode, 0, sizeof(mode));
 
     char boxname[20];
 
@@ -391,30 +534,22 @@ void serialMSPCheck()
         len++;
       }
       else {
-        if(strncmp("ARM", boxname, len) == 0)
-          mode.armed |= bit;
-        if(strncmp("ANGLE", boxname, len) == 0)
-          mode.stable |= bit;
-        if(strncmp("HORIZON", boxname, len) == 0)
-          mode.horizon |= bit;
-        if(strncmp("MAG", boxname, len) == 0)
-          mode.mag |= bit;
-        if(strncmp("BARO", boxname, len) == 0)
-          mode.baro |= bit;
-        if(strncmp("LLIGHTS", boxname, len) == 0)
-          mode.llights |= bit;
-        if(strncmp("CAMSTAB", boxname, len) == 0)
-          mode.camstab |= bit;
-        if(strncmp("AIR MODE", boxname, len) == 0)
-          mode.air |= bit;
-        if(strncmp("GPS HOME", boxname, len) == 0)
-          mode.gpshome |= bit;
-        if(strncmp("GPS HOLD", boxname, len) == 0)
-          mode.gpshold |= bit;
-        if(strncmp("PASSTHRU", boxname, len) == 0)
-          mode.passthru |= bit;
-        if(strncmp("OSD SW", boxname, len) == 0)
-          mode.osd_switch |= bit;
+          for (int i = 0; boxnames[i].name; i++) {
+              if (strncmp_P(boxname, boxnames[i].name, len) == 0) {
+                  switch (boxnames[i].size) {
+                  case 8:
+                      *(uint8_t*)boxnames[i].var |= bit;
+                      break;
+                  case 16:
+                      *(uint16_t*)boxnames[i].var |= bit;
+                      break;
+                  case 32:
+                      *(uint32_t*)boxnames[i].var |= bit;
+                      break;
+                  }
+                  break;
+              }
+          }
 
         len = 0;
         bit <<= 1L;
@@ -428,20 +563,7 @@ void serialMSPCheck()
     uint32_t bit = 1;
     uint8_t remaining = dataSize;
 
-    mode.armed = 0;
-    mode.stable = 0;
-    mode.horizon = 0;
-    mode.baro = 0;
-    mode.mag = 0;
-    mode.gpshome = 0;
-    mode.gpshold = 0;
-    mode.gpsmission = 0;
-    mode.gpsland = 0;
-    mode.llights = 0;
-    mode.passthru = 0;
-    mode.osd_switch = 0;
-    mode.camstab = 0;
-    mode.air = 0;
+    memset(&mode, 0, sizeof(mode));
 
     while(remaining > 0) {
       char c = read8();
@@ -463,7 +585,7 @@ void serialMSPCheck()
         break;
       case 8:
         mode.camstab |= bit;
-        break;
+       break;
       case 10:
         mode.gpshome |= bit;
         break;
@@ -485,9 +607,14 @@ void serialMSPCheck()
       case 21:
         mode.gpsland |= bit;
         break;
-      case 28: // Needs BetaFlight 2.1.5 and up
+      case 28:
         mode.air |= bit;
         break;
+#if defined ACROPLUS
+      case 29:
+        mode.acroplus |= bit;
+        break;
+#endif //ACROPLUS        
       }
       bit <<= 1;
       --remaining;
@@ -519,20 +646,18 @@ void handleRawRC() {
   if(!waitStick)
   {
     if((MwRcData[PITCHSTICK]>MAXSTICK)&&(MwRcData[YAWSTICK]>MAXSTICK)&&(MwRcData[THROTTLESTICK]>MINSTICK)){
-      if ((allSec-menuSec)>5) {
-        armed=0;
-      }
-      else if (!configMode&&(allSec>5)&&!armed){
+      if (!configMode&&(allSec>5)&&!armed){
           // Enter config mode using stick combination
           waitStick =  2;	// Sticks must return to center before continue!
           configMode = 1;
+          configPage = previousconfigPage;
           setMspRequests();
       }
     }
     else if(configMode) {
       int8_t oldmenudir=constrain(menudir,-5,5);
       menudir=0;
-      if(previousarmedstatus&&(MwRcData[THROTTLESTICK]>MINSTICK))
+      if(previousarmedstatus&&(MwRcData[THROTTLESTICK]>1300))
       {
 	// EXIT from SHOW STATISTICS AFTER DISARM (push throttle up)
 	waitStick = 2;
@@ -593,156 +718,258 @@ void handleRawRC() {
       { 
 	waitStick =1;
         menudir=1+oldmenudir;
-	if(configPage == 9 && COL == 3) {
+        #ifdef MENU_ALARMS
+	if(configPage == MENU_ALARMS && COL == 3) {
 	  if(ROW==5) timer.magCalibrationTimer=0;
         }
+        #endif //MENU_ALARMS
         serialMenuCommon();  
       }      
-    }
-    else{
-      menuSec=allSec;
     }
     if(waitStick == 1)
       stickTime = millis();
   }
 }
 
+// Some cute macros to use use within the switch-case to make code look clean
+// Note that it has a break, and it is enclosed in a braces.
+// It may be clever to omit the trailing semi-colon in use to signify that
+// the line is special.
+
+#define ReverseSetting(name) {Settings[name] = !Settings[name]; break;}
+#define ModifySetting(name) {Settings[name] += menudir; break;}
+#define ModifySetting16(name) {Settings16[name] += menudir; break;}
+
 void serialMenuCommon()
-  {
-    if((ROW==10)&&(COL==3)) {
-      if (menudir>1){
-        menudir=1;
-      }
-      if (menudir<-1){
-        menudir=-1;
-      }
-//      constrain(menudir,-1,1);
-      configPage=configPage+menudir;
+{
+  if((ROW==10)&&(COL==3)) {
+    if (menudir > 1){
+      menudir = 1;
     }
-    if(configPage<MINPAGE) configPage = MAXPAGE;
-    if(configPage>MAXPAGE) configPage = MINPAGE;
-#ifdef PAGE1
-	if(configPage == 1) {
-	  if(ROW >= 1 && ROW <= 7) {
-            uint8_t MODROW=ROW-1;
-            if (ROW>5){
-              MODROW=ROW+1;
-            }
-  	    if(COL==1) P8[MODROW]=P8[MODROW]+menudir;
-	    if(COL==2) I8[MODROW]=I8[MODROW]+menudir;
-	    if(COL==3) D8[MODROW]=D8[MODROW]+menudir;
-	  }
-	}
+    if (menudir < -1){
+      menudir = -1;
+    }
+//      constrain(menudir,-1,1);
+    configPage += menudir;
+  }
+
+  if(configPage < MINPAGE) configPage = MAXPAGE;
+  if(configPage > MAXPAGE) configPage = MINPAGE;
+
+#ifdef MENU_PID
+  if(configPage == MENU_PID) {
+#ifdef MENU_PID_VEL
+    if(ROW >= 1 && ROW <= 8) {
+#else
+    if(ROW >= 1 && ROW <= 7) {
 #endif
-#ifdef PAGE2
-        #if defined(CLEANFLIGHT190)
-          if(configPage == 2 && COL == 3) {
-	    if(ROW==1) rcRate8=rcRate8+menudir;
-	    if(ROW==2) rcExpo8=rcExpo8+menudir;
-	    if(ROW==3) rollRate=rollRate+menudir;
-	    if(ROW==4) PitchRate=PitchRate+menudir;
-	    if(ROW==5) yawRate=yawRate+menudir;
-	    if(ROW==6) dynThrPID=dynThrPID+menudir;
-	    if(ROW==7) thrMid8=thrMid8+menudir;
-	    if(ROW==8) thrExpo8=thrExpo8+menudir;
-	    if(ROW==9) tpa_breakpoint16=tpa_breakpoint16+menudir;
-          }
-        #elif defined(CLEANFLIGHT180) || defined (BASEFLIGHT20150627)
-          if(configPage == 2 && COL == 3) {
-	    if(ROW==1) rcRate8=rcRate8+menudir;
-	    if(ROW==2) rcExpo8=rcExpo8+menudir;
-	    if(ROW==3) rollRate=rollRate+menudir;
-	    if(ROW==4) PitchRate=PitchRate+menudir;
-	    if(ROW==5) yawRate=yawRate+menudir;
-	    if(ROW==6) dynThrPID=dynThrPID+menudir;
-	    if(ROW==7) thrMid8=thrMid8+menudir;
-	    if(ROW==8) thrExpo8=thrExpo8+menudir;
-         }
-        #else
-          if(configPage == 2 && COL == 3) {
-	    if(ROW==1) rcRate8=rcRate8+menudir;
-	    if(ROW==2) rcExpo8=rcExpo8+menudir;
-	    if(ROW==3) rollPitchRate=rollPitchRate+menudir;
-	    if(ROW==4) yawRate=yawRate+menudir;
-	    if(ROW==5) dynThrPID=dynThrPID+menudir;
-	    if(ROW==6) thrMid8=thrMid8+menudir;
-	    if(ROW==7) thrExpo8=thrExpo8+menudir;
-	  }
-        #endif
+      uint8_t MODROW = ROW - 1;
+      if (ROW > 5) {
+        MODROW = ROW + 1;
+      }
+      switch(COL) {
+      case 1: P8[MODROW] += menudir; break;
+      case 2: I8[MODROW] += menudir; break;
+      case 3: D8[MODROW] += menudir; break;
+      }
+    }
+  }
 #endif
-#ifdef PAGE3
-	if(configPage == 3 && COL == 3) {
-	  if(ROW==1) Settings[S_DISPLAYVOLTAGE]=!Settings[S_DISPLAYVOLTAGE];  
-	  if(ROW==2) Settings[S_DIVIDERRATIO]=Settings[S_DIVIDERRATIO]+menudir;
-	  if(ROW==3) Settings[S_VOLTAGEMIN]=Settings[S_VOLTAGEMIN]+menudir;
-	  if(ROW==4) Settings[S_VIDVOLTAGE]=!Settings[S_VIDVOLTAGE];
-	  if(ROW==5) Settings[S_VIDDIVIDERRATIO]=Settings[S_VIDDIVIDERRATIO]+menudir;
-	  if(ROW==6) Settings[S_BATCELLS]=Settings[S_BATCELLS]+menudir;
-	  if(ROW==7) Settings[S_MAINVOLTAGE_VBAT]=!Settings[S_MAINVOLTAGE_VBAT];
-	}
+
+#ifdef MENU_SERVO
+  if(configPage == MENU_SERVO) {
+    switch(COL) {
+      case 1: servo.settings[0][ROW-1]+= menudir; break;
+      case 2: servo.settings[1][ROW-1]+= menudir; break;
+      case 3: servo.settings[2][ROW-1]+= menudir; break;
+    }
+  }
 #endif
-#ifdef PAGE4
-	if(configPage == 4 && COL == 3) {
-	  if(ROW==1) Settings[S_DISPLAYRSSI]=!Settings[S_DISPLAYRSSI];
-	  if(ROW==2) timer.rssiTimer=15; // 15 secs to turn off tx anwait to read min RSSI
-	  if(ROW==3) Settings[S_MWRSSI]=!Settings[S_MWRSSI];
-	  if(ROW==4) Settings[S_PWMRSSI]=!Settings[S_PWMRSSI];
-	  if(ROW==5) Settings16[S16_RSSIMAX]=Settings16[S16_RSSIMAX]+menudir;
-	  if(ROW==6) Settings16[S16_RSSIMIN]=Settings16[S16_RSSIMIN]+menudir;
-	}
+
+#ifdef MENU_RC
+  #if defined CORRECT_MENU_RCT2
+    if (configPage == MENU_RC && COL == 3) {
+      switch(ROW) {
+      case 1: rcRate8 += menudir; break;
+      case 2: rcExpo8 += menudir; break;
+      case 3: rollRate += menudir; break;
+      case 4: PitchRate += menudir; break;
+      case 5: yawRate += menudir; break;
+      case 6: dynThrPID += menudir; break;
+      case 7: thrMid8 += menudir; break;
+      case 8: thrExpo8 += menudir; break;
+      case 9: tpa_breakpoint16 += menudir; break;
+      }
+    }
+  #elif defined CORRECT_MENU_RCT1
+    if (configPage == MENU_RC && COL == 3) {
+      switch(ROW) {
+      case 1: rcRate8 += menudir; break;
+      case 2: rcExpo8 += menudir; break;
+      case 3: rollRate += menudir; break;
+      case 4: PitchRate += menudir; break;
+      case 5: yawRate += menudir; break;
+      case 6: dynThrPID += menudir; break;
+      case 7: thrMid8 += menudir; break;
+      case 8: thrExpo8 += menudir; break;
+      }
+    }
+  #else
+    if (configPage == MENU_RC && COL == 3) {
+      switch(ROW) {
+      case 1: rcRate8 += menudir; break;
+      case 2: rcExpo8 += menudir; break;
+      case 3: rollPitchRate += menudir; break;
+      case 4: yawRate += menudir; break;
+      case 5: dynThrPID += menudir; break;
+      case 6: thrMid8 += menudir; break;
+      case 7: thrExpo8 += menudir; break;
+      }
+    }
+  #endif
 #endif
-#ifdef PAGE5
-	if(configPage == 5 && COL == 3) {
-	  if(ROW==1) Settings[S_AMPERAGE]=!Settings[S_AMPERAGE];
-	  if(ROW==2) Settings[S_AMPER_HOUR]=!Settings[S_AMPER_HOUR];
-	  if(ROW==3) Settings[S_AMPERAGE_VIRTUAL]=!Settings[S_AMPERAGE_VIRTUAL];
-	  if(ROW==4) Settings16[S16_AMPDIVIDERRATIO]=Settings16[S16_AMPDIVIDERRATIO]+menudir;
-	  if(ROW==5) Settings16[S16_AMPZERO]=Settings16[S16_AMPZERO]+menudir;
-	}
+
+#ifdef MENU_FIXEDWING
+  if (configPage == MENU_FIXEDWING && COL == 3) {
+    switch(ROW) {
+    case 1: cfg.fw_gps_maxcorr += menudir; break;
+    case 2: cfg.fw_gps_rudder += menudir; break;
+    case 3: cfg.fw_gps_maxclimb += menudir; break;
+    case 4: cfg.fw_gps_maxdive += menudir; break;
+    case 5: cfg.fw_climb_throttle += menudir; break;
+    case 6: cfg.fw_cruise_throttle += menudir; break;
+    case 7: cfg.fw_idle_throttle += menudir; break;
+    case 8: cfg.fw_rth_alt += menudir; break;
+    }
+  }
 #endif
-#ifdef PAGE6
-	if(configPage == 6 && COL == 3) {
-	  if(ROW==1) Settings[S_DISPLAY_HORIZON_BR]=!Settings[S_DISPLAY_HORIZON_BR];
-	  if(ROW==2) Settings[S_WITHDECORATION]=!Settings[S_WITHDECORATION];
-	  if(ROW==3) Settings[S_SCROLLING]=!Settings[S_SCROLLING];
-	  if(ROW==4) Settings[S_THROTTLEPOSITION]=!Settings[S_THROTTLEPOSITION];
-	  if(ROW==5) Settings[S_COORDINATES]=!Settings[S_COORDINATES];
-	  if(ROW==6) Settings[S_MODESENSOR]=!Settings[S_MODESENSOR];
-	  if(ROW==7) Settings[S_GIMBAL]=!Settings[S_GIMBAL];
-	  if(ROW==8) Settings[S_MAPMODE]=Settings[S_MAPMODE]+menudir;
-	}
+
+#ifdef MENU_VOLTAGE
+  if (configPage == MENU_VOLTAGE && COL == 3) {
+    switch(ROW) {
+    case 1: ReverseSetting(S_DISPLAYVOLTAGE)
+    case 2: ModifySetting(S_DIVIDERRATIO)
+    case 3: ModifySetting(S_VOLTAGEMIN)
+    case 4: ReverseSetting(S_VIDVOLTAGE)
+    case 5: ModifySetting(S_VIDDIVIDERRATIO)
+    case 6: ModifySetting(S_BATCELLS)
+    case 7: ReverseSetting(S_MAINVOLTAGE_VBAT)
+    }
+  }
 #endif
-#ifdef PAGE7
-	if(configPage == 7 && COL == 3) {
-	  if(ROW==1) Settings[S_UNITSYSTEM]=!Settings[S_UNITSYSTEM];
-	  if(ROW==2) {
-	    Settings[S_VIDEOSIGNALTYPE]=!Settings[S_VIDEOSIGNALTYPE];
-	    MAX7456Setup();
-	    }
-	  if(ROW==3) Settings[S_VREFERENCE]=!Settings[S_VREFERENCE];
-	  if(ROW==4) Settings[S_DEBUG]=!Settings[S_DEBUG];
-	  if(ROW==5) timer.magCalibrationTimer=CALIBRATION_DELAY;
-	  if(ROW==6) Settings[S_RCWSWITCH_CH]=Settings[S_RCWSWITCH_CH]+menudir;	}
+
+#ifdef MENU_RSSI
+  if (configPage == MENU_RSSI && COL == 3) {
+    switch(ROW) {
+    case 1: ReverseSetting(S_DISPLAYRSSI)
+    case 2: timer.rssiTimer=15; break; // 15 secs to turn off tx anwait to read min RSSI
+    case 3: ReverseSetting(S_MWRSSI)
+    case 4: ReverseSetting(S_PWMRSSI)
+    case 5: ModifySetting16(S16_RSSIMAX)
+    case 6: ModifySetting16(S16_RSSIMIN)
+    }
+  }
 #endif
-#ifdef PAGE8
-	if(configPage == 8 && COL == 3) {
-	  if(ROW==1) Settings[S_GPSTIME]=!Settings[S_GPSTIME];
-	  if(ROW==2) Settings[S_GPSTZAHEAD]=!Settings[S_GPSTZAHEAD];
-	  if(ROW==3) if((menudir == 1 && Settings[S_GPSTZ] < 130) || (menudir == -1 && Settings[S_GPSTZ] > 0))Settings[S_GPSTZ]=Settings[S_GPSTZ]+menudir*5;
-	}
+
+#ifdef MENU_CURRENT
+  if (configPage == MENU_CURRENT && COL == 3) {
+    switch(ROW) {
+    case 1: ReverseSetting(S_AMPERAGE)
+    case 2: ReverseSetting(S_AMPER_HOUR)
+    case 3: ReverseSetting(S_AMPERAGE_VIRTUAL)
+    case 4: ModifySetting16(S16_AMPDIVIDERRATIO)
+    case 5: ModifySetting16(S16_AMPZERO)
+    }
+  }
 #endif
-#ifdef PAGE9
-	if(configPage == 9 && COL == 3) {
-	  if(ROW==1) Settings[S_DISTANCE_ALARM]=Settings[S_DISTANCE_ALARM]+menudir;
-	  if(ROW==2) Settings[S_ALTITUDE_ALARM]=Settings[S_ALTITUDE_ALARM]+menudir;
-	  if(ROW==3) Settings[S_SPEED_ALARM]=Settings[S_SPEED_ALARM]+menudir;
-	  if(ROW==4) Settings[S_FLYTIME_ALARM]=Settings[S_FLYTIME_ALARM]+menudir;
-	  if(ROW==5) Settings[S_AMPER_HOUR_ALARM]=Settings[S_AMPER_HOUR_ALARM]+menudir;
-	  if(ROW==6) Settings[S_AMPERAGE_ALARM]=Settings[S_AMPERAGE_ALARM]+menudir;
-	}
+
+#ifdef MENU_DISPLAY
+  if (configPage == MENU_DISPLAY && COL == 3) {
+    switch(ROW) {
+    case 1: ReverseSetting(S_DISPLAY_HORIZON_BR)
+    case 2: ReverseSetting(S_WITHDECORATION)
+    case 3: ReverseSetting(S_SCROLLING)
+    case 4: ReverseSetting(S_THROTTLEPOSITION)
+    case 5: ReverseSetting(S_COORDINATES)
+    case 6: ReverseSetting(S_MODESENSOR)
+    case 7: ReverseSetting(S_GIMBAL)
+    case 8: ModifySetting(S_MAPMODE)
+    }
+  }
 #endif
-  	if((ROW==10)&&(COL==1)) configExit();
-	if((ROW==10)&&(COL==2)) configSave();
+
+#ifdef MENU_ADVANCED
+  if (configPage == MENU_ADVANCED && COL == 3) {
+    switch(ROW) {
+    case 1: ReverseSetting(S_UNITSYSTEM)
+    case 2:
+      Settings[S_VIDEOSIGNALTYPE]=!Settings[S_VIDEOSIGNALTYPE];
+      MAX7456Setup();
+      break;
+    case 3: ReverseSetting(S_VREFERENCE)
+    case 4: ReverseSetting(S_DEBUG)
+    case 5: timer.magCalibrationTimer=CALIBRATION_DELAY; break;
+    case 6: ModifySetting(S_RCWSWITCH_CH)
+    }
+  }
+#endif
+
+#ifdef MENU_GPS_TIME
+  if (configPage == MENU_GPS_TIME && COL == 3) {
+    switch(ROW) {
+    case 1: ReverseSetting(S_GPSTIME);
+    case 2: ReverseSetting(S_GPSTZAHEAD);
+    case 3:
+      if (   (menudir == 1 && Settings[S_GPSTZ] < 130)
+          || (menudir == -1 && Settings[S_GPSTZ] > 0))
+        Settings[S_GPSTZ] = Settings[S_GPSTZ] + menudir * 5;
+      break;
+    }
+  }
+#endif
+
+#ifdef MENU_ALARMS
+  if (configPage == MENU_ALARMS && COL == 3) {
+    switch(ROW) {
+    case 1: ModifySetting(S_DISTANCE_ALARM)
+    case 2: ModifySetting(S_ALTITUDE_ALARM)
+    case 3: ModifySetting(S_SPEED_ALARM)
+    case 4: ModifySetting(S_FLYTIME_ALARM)
+    case 5: ModifySetting(S_AMPER_HOUR_ALARM)
+    case 6: ModifySetting(S_AMPERAGE_ALARM)
+    }
+  }
+#endif
+
+#ifdef MENU_PROFILE
+  if (configPage == MENU_PROFILE && COL == 3) {
+    switch(ROW) {
+    case 1: FCProfile += menudir; break;
+    case 2: PIDController += +menudir; break;
+  #ifdef CORRECTLOOPTIME
+    case 3: LoopTime += menudir; break;
+  #endif
+    }
+  }
+
+  #ifdef ENABLE_MSP_SAVE_ADVANCED
+  if (FCProfile > 2)
+    FCProfile=0;
+
+  if (FCProfile != PreviousFCProfile){
+    setFCProfile();
+    PreviousFCProfile = FCProfile;
+  }        
+  #endif
+#endif  
+
+  if (ROW == 10) {
+    previousconfigPage = configPage;
+    switch(COL) {
+    case 1: configExit(); break;
+    case 2: configSave(); break;
+    }
+  }
 }
 
 void serialMSPreceive(uint8_t loops)
@@ -773,6 +1000,18 @@ void serialMSPreceive(uint8_t loops)
         if (GPS_newFrame(c)) GPS_NewData();  
       #endif //NAZA  
     #endif //GPSOSD   
+
+    #if defined (PROTOCOL_MAVLINK)
+       serialMAVreceive(c);
+    #endif //PROTOCOL_MAVLINK   
+
+    #if defined (PROTOCOL_LTM)
+       serialLTMreceive(c);
+    #endif // PROTOCOL_LTM   
+    
+    #if defined (PROTOCOL_KISS)
+       serialKISSreceive(c);
+    #endif // PROTOCOL_KISS   
 
     if (c_state == IDLE)
     {
@@ -840,11 +1079,29 @@ void configExit()
     ampMAX=0;
     flyingTime=0;
   }
+  #ifdef ENABLE_MSP_SAVE_ADVANCED
+    if (FCProfile!=CurrentFCProfile){
+      FCProfile=CurrentFCProfile;
+      setFCProfile();
+    }
+  #endif
   setMspRequests();
 }
 
 void configSave()
 {
+  CurrentFCProfile=FCProfile;
+
+#if defined ENABLE_MSP_SAVE_ADVANCED
+  mspWriteRequest(MSP_SET_PID_CONTROLLER, 1);
+  mspWrite8(PIDController);
+  mspWriteChecksum();
+
+  mspWriteRequest(MSP_SET_LOOP_TIME, 2);
+  mspWrite16(LoopTime);
+  mspWriteChecksum();  
+#endif
+
   mspWriteRequest(MSP_SET_PID, PIDITEMS*3);
   for(uint8_t i=0; i<PIDITEMS; i++) {
     mspWrite8(P8[i]);
@@ -853,7 +1110,7 @@ void configSave()
   }
   mspWriteChecksum();
   
-#if defined CLEANFLIGHT190
+#if defined CORRECT_MSP_CF2
   mspWriteRequest(MSP_SET_RC_TUNING,11);
   mspWrite8(rcRate8);
   mspWrite8(rcExpo8);
@@ -866,7 +1123,7 @@ void configSave()
   mspWrite16(tpa_breakpoint16);
   mspWrite8(rcYawExpo8);
   mspWriteChecksum();
-#elif defined CLEANFLIGHT180
+#elif defined CORRECT_MSP_CF1
   mspWriteRequest(MSP_SET_RC_TUNING,10);
   mspWrite8(rcRate8);
   mspWrite8(rcExpo8);
@@ -890,13 +1147,45 @@ void configSave()
   mspWriteChecksum();
  #endif
 
-#if defined BASEFLIGHT20150627
+#if defined CORRECT_MSP_BF1
   mspWriteRequest(MSP_SET_CONFIG,25);
   bfconfig[18] =rollRate;
   bfconfig[19] =PitchRate;
-  for(uint8_t i=0; i<SETCONGFIG; i++) {
+  for(uint8_t i=0; i<25; i++) {
     mspWrite8(bfconfig[i]);
   }
+  mspWriteChecksum();
+#endif
+
+#if defined MENU_FIXEDWING
+  mspWriteRequest(MSP_SET_FW_CONFIG,38);
+  mspWrite8(cfg.fw_althold_dir);
+  mspWrite16(cfg.fw_gps_maxcorr);
+  mspWrite16(cfg.fw_gps_rudder);
+  mspWrite16(cfg.fw_gps_maxclimb);
+  mspWrite16(cfg.fw_gps_maxdive);
+  mspWrite16(cfg.fw_climb_throttle);
+  mspWrite16(cfg.fw_cruise_throttle);
+  mspWrite16(cfg.fw_idle_throttle);
+  mspWrite16(cfg.fw_scaler_throttle);
+  mspWrite32(cfg.fw_roll_comp); // Float is Not compatible with Gui. Change to mspWrite8
+  mspWrite8(cfg.fw_rth_alt);
+  for(uint8_t i=0; i<8; i++) {
+    mspWrite16(0);
+  }
+  mspWriteChecksum();  
+#endif // MENU_FIXEDWING
+
+#ifdef MENU_SERVO  
+  mspWriteRequest(MSP_SET_SERVO_CONF,(9*MAX_SERVOS));
+    for (uint8_t i = 0; i < MAX_SERVOS; i++) {
+      for (uint8_t ii = 0; ii < 5; ii++) {
+        if (ii==3)
+          mspWrite8(servo.settings[ii][i]&0xFF);
+        else
+          mspWrite16(servo.settings[ii][i]);
+      }
+   }
   mspWriteChecksum();
 #endif
 
@@ -928,8 +1217,16 @@ void settingswriteSerialRequest() {
   mspWriteRequest(MSP_OSD,3);
   mspWrite8(OSD_READ_CMD_EE);
   mspWrite16(eeaddress);
-debug[0]=eeaddress; //gbug
-debug[1]++; //gbug
   mspWriteChecksum();
+}
+
+void setFCProfile()
+{
+  mspWriteRequest(MSP_SELECT_SETTING, 1);
+  mspWrite8(FCProfile);
+  mspWriteChecksum();
+  mspWriteRequest(MSP_EEPROM_WRITE, 0);
+  setMspRequests();
+  delay(100);
 }
 

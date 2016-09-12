@@ -47,7 +47,7 @@ import java.text.DecimalFormat;
 
 
 String MW_OSD_GUI_Version = "MWOSD R1.6 - NextGeneration";
-int MW_OSD_EEPROM_Version = 11;
+int MW_OSD_EEPROM_Version = 12;
 int CONFIGITEMS16 = 7;
 
 int  GPS_numSatPosition = 0;
@@ -92,10 +92,11 @@ int  glidescopePosition = 38;
 int  callSignPosition = 39;
 int  debugPosition = 40;
 
-int GPSstartlat = 430948610;
-int GPSstartlon = -718897060;
+int GPSstartlat =  43094861;  //10 000 000 = 4.3
+int GPSstartlon = -71889706; //=7.1
 
 int MSP_sendOrder =0;
+int LTM_sendOrder =0;
 PImage img_Clear,GUIBackground,OSDBackground,DONATEimage,RadioPot;
 
 int readcounter=0;
@@ -155,7 +156,7 @@ ControlP5 SmallcontrolP5;
 ControlP5 ScontrolP5;
 ControlP5 FontGroupcontrolP5;
 ControlP5 GroupcontrolP5;
-Textlabel txtlblWhichcom,txtlblWhichbaud,txtmessage,mspmessage,eeindexmessage,analmessage; 
+Textlabel txtlblWhichcom,txtlblWhichbaud,txtmessage,mspmessage,eeindexmessage,processingmessage,analmessage; 
 Textlabel txtlblLayoutTxt,txtlblLayoutEnTxt, txtlblLayoutHudTxt; 
 Textlabel txtlblLayoutTxt2,txtlblLayoutEnTxt2, txtlblLayoutHudTxt2; 
 ListBox commListbox,baudListbox;
@@ -171,6 +172,7 @@ boolean PortRead = false;
 boolean PortWrite = false;
 int PortReadtimer = 0;
 //int ReadConfig = 0;
+int DisplayMillis = 0;
 int ReadMillis = 0;
 int WriteConfig = 0;
 int WriteMillis = 0;
@@ -200,11 +202,17 @@ int WriteConfigMSPMillis=0;
 int FontMSPMillis=0;
 int rssical=99;
 int eedataOSDtemp = 0;
+int processingtxtval = 0;
+int oldseconds=0;
+int framerate=0;
+String frameratetxt="";
+int loop1hz=0;
+int loop10hz=0;
 
 // XML config editorvariables
 int hudeditposition=0;
 
-
+int[] kisstable;
 int[] SimPosn;
 int[][] ConfigLayout;
 int[] EElookuptable= new int[512];
@@ -221,6 +229,8 @@ String OSname = System.getProperty("os.name");
 String LoadPercent = "";
 String CallSign = "";
 String Title;
+
+// gui configuration
 int Passthroughcomm;
 int AutoSimulator=0;
 int AutoDebugGUI=1;
@@ -228,7 +238,7 @@ int Simtype=0;
 int Donate=2;
 int DonateMessage=1;
 int StartupMessage=0;
-int FrameRate=30;
+int FrameRate=5;
 
 int init_com = 0;
 int commListMax = 0;
@@ -239,6 +249,7 @@ int[] debug = new int[4];
 String progresstxt="";
 String msptxt="";
 String eeindextxt="";
+String processingtxt="";
 String analtxt="";
 int analSENSORS=5;
 int xcolor=20;  
@@ -251,9 +262,10 @@ int ConfigVALUE = -1;
 // Box locations -------------------------------------------------------------------------
 int Col1Width = 180;        int Col2Width = 200;    int Col3Width = 165;
 
-int windowsX    = 1041+Col3Width+5;       int windowsY    =613; //578;        //995; //573;
-//int windowsX    = 1041;       int windowsY    =578;        //995; //573;
-//int windowsX    = 1200;       int windowsY    =800;        //995; //573;
+// Window Size -------------------------------------------------------------------------
+int windowsX    = 1041+Col3Width+5;
+int windowsY    =578;
+
 int xGraph      = 10;         int yGraph      = 35;
 int xObj        = 520;        int yObj        = 293; //900,450
 int xCompass    = 920;        int yCompass    = 341; //760,336
@@ -661,7 +673,8 @@ color yellow_ = color(200, 200, 20),
       donateback_ = color(180, 100, 0),
       donatefront_ = color(50, 50, 255),
       osdcontr_ = color(50, 50, 50),
-      calibrate_ = color(50, 50, 255)
+      calibrate_ = color(50, 50, 255),
+      background_ = color(50, 50, 50)
       ;
 //Colors--------------------------------------------------------------------------------------------------------------------
 
@@ -681,7 +694,7 @@ Button buttonIMPORT,buttonSAVE,buttonREAD,buttonRESET,buttonWRITE,buttonRESTART,
 Button buttonLUP, buttonLDOWN, buttonLLEFT, buttonLRIGHT, buttonLPOSUP, buttonLPOSDOWN;
 Button buttonLHUDUP,buttonLPOSHUDDOWN,buttonLPOSEN, buttonLSET, buttonLADD, buttonLSAVE, buttonLCANCEL;
 Button buttonLEW,buttonSetRSSIlow,buttonSetRSSIhigh,buttonSetHWCurrentSensor,buttonSetHWCurrentSensorCancel,buttonSetHWCurrentSensorSave;
-Button buttonGUIDELINK, buttonFAQLINK, buttonCALIBLINK, buttonSUPPORTLINK, buttonDONATELINK;
+Button buttonGUIDELINK, buttonFAQLINK, buttonCALIBLINK, buttonSUPPORTLINK, buttonDONATELINK, buttonMWOSD, buttonGITHUB;
 // Buttons------------------------------------------------------------------------------------------------------------------
 
 // Toggles------------------------------------------------------------------------------------------------------------------
@@ -851,6 +864,7 @@ DONATEimage  = loadImage("DON_def.png");
   txtmessage = controlP5.addTextlabel("txtmessage","",3,295); // textdebug
   mspmessage = controlP5.addTextlabel("mspmessage","",XHUD+735,155); // textdebug
   eeindexmessage = controlP5.addTextlabel("eeindexmessage","",XHUD+735,175); // eeindexdebug
+  processingmessage = controlP5.addTextlabel("processingmessage","",XHUD+735+70,155); // eeindexdebug
 
 
   analmessage = controlP5.addTextlabel("analmessage","",XHUD+735,255); //
@@ -927,6 +941,8 @@ CreateItem(GetSetting("S_AMPERAGE_ALARM"),  5,7*17, G_Amperage);
 CreateItem(GetSetting("S_VIDVOLTAGE"),  5,0, G_VVoltage);
 CreateItem(GetSetting("S_VIDDIVIDERRATIO"),  5,1*17, G_VVoltage);
 CreateItem(GetSetting("S_VIDVOLTAGEMIN"), 5,2*17, G_VVoltage);
+  confItem[GetSetting("S_VIDVOLTAGEMIN")].setDecimalPrecision(1);
+  confItem[GetSetting("S_VIDVOLTAGEMIN")].setMultiplier(0.1);
 
 //  Temperature  --------------------------------------------------------------------
 //CreateItem(GetSetting("S_DISPLAYTEMPERATURE"),  5,0, G_Alarms);
@@ -1006,6 +1022,10 @@ buttonGPSTIMELINK = controlP5.addButton("GPSTIMELINK",1,200,10,125,16);
 buttonGPSTIMELINK.setCaptionLabel("GPS Requirements").setGroup(G_LINKS);
 buttonSPORTLINK = controlP5.addButton("SPORTLINK",1,200,30,125,16);
 buttonSPORTLINK.setCaptionLabel("FRSKY Requirements").setGroup(G_LINKS);
+buttonMWOSD = controlP5.addButton("MWOSDLINK",1,200,50,125,16);
+buttonMWOSD.setCaptionLabel("MWOSD website").setGroup(G_LINKS);
+buttonGITHUB = controlP5.addButton("GITHUBLINK",1,200,70,125,16);
+buttonGITHUB.setCaptionLabel("LATEST SOFTWARE").setGroup(G_LINKS);
 buttonDONATELINK = controlP5.addButton("DONATELINK",1,XLINKS+30,YLINKS+217, 80, 20).setVisible(false);
 //   image(DONATEimage,XLINKS+20,YLINKS+207, 100, 40); 
 
@@ -1201,15 +1221,48 @@ void MakePorts(){
 
 void draw() {
 
-     MWData_Com(); 
-//  debug[0]=WriteLayouts;
-//  debug[1]=OSD_S_HUDSW0;
-//  debug[2]=OSD_S_HUDSW1;
-//  debug[3]=OSD_S_HUDSW2;
-// Initial setup
+  MWData_Com(); 
+  if (millis()>loop1hz){
+    loop1hz=millis()+1000;
+  }
+    if (millis()>loop10hz){
+    loop10hz=millis()+100;
+  }
+
+  int seconds = second();
   time=millis();
   progresstxt="";
+  switch(processingtxtval) {
+    case 0:
+      processingtxt="/";
+      break;
+    case 1:
+      processingtxt="-";
+      break;
+    case 2:
+      processingtxt="\\";
+      break;
+    case 3:
+      processingtxt="|";
+      break;
+  }
+  processingtxtval++;
 
+  if (seconds!=oldseconds){
+    frameratetxt=str(framerate);
+    framerate=0;
+    oldseconds=seconds;
+  }
+  framerate++;
+  processingtxt="Framerate: "+ frameratetxt +" "+ processingtxt;
+
+  if (processingtxtval>3) processingtxtval=0;
+  if (int(DEBUGGUI.getValue())!=1){
+    processingtxt="";
+  }
+  
+  
+  
   if (commListbox.isOpen())
     baudListbox.close();
   else
@@ -1275,8 +1328,8 @@ void draw() {
     txtmessage.setValue(progresstxt);
     mspmessage.setValue(msptxt);
     eeindexmessage.setValue(eeindextxt);
+    processingmessage.setValue(processingtxt);
     
-// txtlblconfItem[0].setValue(""); huh?
 
 // Layout editor
   txtlblLayoutTxt.setValue(" : "+ CONFIGHUDTEXT[hudeditposition]);
@@ -1291,7 +1344,7 @@ void draw() {
   txtlblLayoutHudTxt.setValue(" : "+hudid);
   LEW.setLabel("Layout Editor for profile: "+hudid+" - "+CONFIGHUDNAME[hudid]);
   if (CONFIGHUDEN[hudid][hudeditposition]>0)
-    txtlblLayoutEnTxt.setValue(" : Enabled");
+    txtlblLayoutEnTxt.setValue(" : Enabled "+(CONFIGHUD[hudid][hudeditposition]&0x01FF));
   else
     txtlblLayoutEnTxt.setValue(" : Disabled");
 
@@ -1309,7 +1362,7 @@ void draw() {
   else {
 //    toggleConfItem[GetSetting("S_RCWSWITCH_CH")].show();
     txtlblconfItem[GetSetting("S_RCWSWITCH")].setText("Using RC Channel");
-    txtlblconfItem[GetSetting("S_RCWSWITCH_CH")].setText("OSD ch (0-7)");
+    txtlblconfItem[GetSetting("S_RCWSWITCH_CH")].setText("OSD ch (1-8)");
     txtlblconfItem[GetSetting("S_HUDSW0")].setText("HUD - LOW");
     txtlblconfItem[GetSetting("S_HUDSW1")].setText("HUD - HIGH");
     txtlblconfItem[GetSetting("S_HUDSW2")].setText("HUD - MID");
@@ -1329,8 +1382,10 @@ void draw() {
     MakePorts();
     msptxt="";
     eeindextxt="";
+//    processingtxt="";
     analmessage.setValue("");
     eeindexmessage.setValue("");
+    processingmessage.setValue("");
     for (int i=0; i<analSENSORS; i++) {
       txtlblanal[i].setValue("");
     }
@@ -1343,14 +1398,14 @@ void draw() {
         if (ClosePort) return;
         
         get_OSD_SENSORS();
- ///*
+
         if ((int(SimControlToggle.getValue())!=0)&&(Simtype==0)) {
 
           if (init_com==1)SendCommand(MSP_ATTITUDE);
           if (init_com==1)SendCommand(MSP_RC);
           if (init_com==1)SendCommand(MSP_STATUS);
 
-        MSP_sendOrder++;
+          MSP_sendOrder++;
         switch(MSP_sendOrder) {
         case 1:
           if (init_com==1)SendCommand(MSP_BOXNAMES);
@@ -1397,8 +1452,12 @@ void draw() {
           MSP_sendOrder=1;
         }
         PortWrite = !PortWrite; // toggle TX LED every other    
-      } 
-//*/
+        }     
+
+        process_mav_send(); //        if ((int(SimControlToggle.getValue())!=0)&&(Simtype==2)) {
+        process_ltm_send(); //        if ((int(SimControlToggle.getValue())!=0)&&(Simtype==3)) {
+        process_kiss_send(); //        if ((int(SimControlToggle.getValue())!=0)&&(Simtype==4)) {
+
       }
     } // End !FontMode
   }
@@ -1414,14 +1473,13 @@ void draw() {
     
   MakePorts();  
   
-  background(80);
+  background(background_);
   // ------------------------------------------------------------------------
   // Draw background control boxes
   // ------------------------------------------------------------------------
 
   image(GUIBackground,0, 0, windowsX, windowsY); 
 
-  int seconds = second();
   if (((seconds&0x1F)!= 0)&&(Donate>0)){
    image(DONATEimage,XLINKS+20,YLINKS+207, 100, 40);  
   }  
@@ -1460,21 +1518,14 @@ void draw() {
  }
    
   }
-  
-      
-    if (int(confItem[GetSetting("S_DISPLAYRSSI")].value()) > 0)    ShowRSSI(); 
-
-
-  if(confItem[GetSetting("S_DISPLAY_HORIZON_BR")].value() > 0) displayHorizon(int(MW_Pitch_Roll.arrayValue()[0])*10,int(MW_Pitch_Roll.arrayValue()[1])*10*-1);
+ 
+ if(SimDisplayToggle.getValue()!=0){     
   SimulateTimer();
   CalcAlt_Vario(); 
 
   ShowCurrentThrottlePosition();
-  if (int(confItem[GetSetting("S_DISPLAYRSSI")].value()) > 0)    ShowRSSI(); 
-  if (int(confItem[GetSetting("S_DISPLAYVOLTAGE")].value()) > 0) ShowVolts(sVBat);
-
+  ShowVolts(sVBat);
   ShowVideoVolts(sVBat);    
- 
   displaySensors();
   displayMode();
   ShowAmps();
@@ -1491,23 +1542,24 @@ void draw() {
   ShowDebug();
   ShowSideBarArrows();
   ShowAPstatus();
+  ShowRSSI(); 
+  ShowMapMode();  
+  ShowSPort();
 
   if(confItem[GetSetting("S_DISPLAYGPS")].value() > 0) {
-  ShowGPSAltitude();
-  ShowDistance();
-  ShowLatLon();
-  ShowSats();   
-  ShowSpeed();
-  ShowDirection();
+    ShowGPSAltitude();
+    ShowDistance();
+    ShowLatLon();
+    ShowSats();   
+    ShowSpeed();
+    ShowDirection();
+  }
+  if(confItem[GetSetting("S_DISPLAY_HORIZON_BR")].value() > 0) displayHorizon(int(MW_Pitch_Roll.arrayValue()[0])*10,int(MW_Pitch_Roll.arrayValue()[1])*10*-1);
  }
  
-  ShowMapMode();
-    
   MatchConfigs();
   MakePorts();
-  
-  ShowSPort();
-  
+    
   if ((ClosePort ==true)&& (PortWrite == false)){ //&& (init_com==1)
     ClosePort();
   }
@@ -1719,6 +1771,8 @@ public void controlEvent(ControlEvent theEvent) {
 
 
 void mapchar(int address, int screenAddress){
+  if (screenAddress>480)
+    return;
   int placeX = (screenAddress % 30) * 12;
   int placeY = (screenAddress / 30) * 18;
 
@@ -1773,6 +1827,10 @@ public void bLUP() {
   int ii = CONFIGHUD[i][hudeditposition]&0x1FF;
   ii-=30;
   ii=constrain(ii,0,419);
+  if(hudeditposition==SideBarHeight)
+    ii=constrain(ii,1,7);
+  if(hudeditposition==SideBarWidth)
+    ii=constrain(ii,1,14);
   println(ii);
   CONFIGHUD[i][hudeditposition]&=0xFE00;
   CONFIGHUD[i][hudeditposition]|=ii;
@@ -1789,10 +1847,13 @@ public void bLDOWN() {
   int ii = CONFIGHUD[i][hudeditposition]&0x1FF;
   ii+=30;
   ii=constrain(ii,0,419);
+  if(hudeditposition==SideBarHeight)
+    ii=constrain(ii,1,7);
+  if(hudeditposition==SideBarWidth)
+    ii=constrain(ii,1,14);
   println(ii);
   CONFIGHUD[i][hudeditposition]&=0xFE00;
   CONFIGHUD[i][hudeditposition]|=ii;
-//  CONFIGHUD[i][hudeditposition]+=30;
 }
 
 public void bLLEFT() {
@@ -1806,6 +1867,10 @@ public void bLLEFT() {
   int ii = CONFIGHUD[i][hudeditposition]&0x1FF;
   ii-=1;
   ii=constrain(ii,0,419);
+  if(hudeditposition==SideBarHeight)
+    ii=constrain(ii,1,7);
+  if(hudeditposition==SideBarWidth)
+    ii=constrain(ii,1,14);
   println(ii);
   CONFIGHUD[i][hudeditposition]&=0xFE00;
   CONFIGHUD[i][hudeditposition]|=ii;
@@ -1822,6 +1887,10 @@ public void bLRIGHT() {
   int ii = CONFIGHUD[i][hudeditposition]&0x1FF;
   ii+=1;
   ii=constrain(ii,0,419);
+  if(hudeditposition==SideBarHeight)
+    ii=constrain(ii,1,7);
+  if(hudeditposition==SideBarWidth)
+    ii=constrain(ii,1,14);
   println(ii);
   CONFIGHUD[i][hudeditposition]&=0xFE00;
   CONFIGHUD[i][hudeditposition]|=ii;
@@ -2181,7 +2250,7 @@ public void LoadConfig(){
     AutoSimulator = 0;
     AutoDebugGUI = 1;
     Simtype=1;
-    FrameRate = 15;
+    FrameRate = 7;
     StartupMessage = 0;
     Donate = 2;
     updateConfig();
@@ -2324,8 +2393,11 @@ public void GPSTIMELINK(){
 public void SPORTLINK(){
  link("https://github.com/ShikOfTheRa/scarab-osd/blob/master/OTHER/DOCUMENTATION/Frsky_SPort.md"); 
 }
-public void CODELINK(){
- link("https://www.mwosd.com/"); 
+public void MWOSDLINK(){
+ link("http://www.mwosd.com"); 
+}
+public void GITHUBLINK(){
+ link("https://github.com/ShikOfTheRa/scarab-osd/releases"); 
 }
 public void FAQLINK(){
  link("https://github.com/ShikOfTheRa/scarab-osd/blob/master/OTHER/DOCUMENTATION/FAQ.md"); 
@@ -2393,6 +2465,8 @@ void initxml(){
     CONFIGHUDEN[hud][hudindex] = enabled;      
   }
   SimPosn = new int[hudoptions];
+    kisstable = new int[KISSFRAMELENGTH];
+
   ConfigLayout= new int[4][hudoptions];
   ConfigRanges[GetSetting("S_HUDSW0")] = hudsavailable-1;
   ConfigRanges[GetSetting("S_HUDSW1")] = hudsavailable-1;
@@ -2402,6 +2476,7 @@ void initxml(){
 
 
 void xmlsavelayout(){
+  XML[] xmlhuddescription = xml.getChildren("DESCRIPTION");
   XML[] allhudoptions = xml.getChildren("LAYOUT");
   int i=0;
 
@@ -2409,6 +2484,9 @@ void xmlsavelayout(){
     for (int hudindex = 0; hudindex < hudoptions; hudindex++) {
       allhudoptions[i].setInt("enabled",CONFIGHUDEN[hud][hudindex]);
       allhudoptions[i].setInt("value",CONFIGHUD[hud][hudindex]&0x3FF);
+      String text = xmlhuddescription[hudindex].getString("desc");
+//      String text=str(i);
+      allhudoptions[i].setString("desc",text);
       i++;  
     }    
   }
@@ -2501,6 +2579,10 @@ void coloriseswitches(){
     SimControlToggle.setColorActive(switches_);
   else
     SimControlToggle.setColorActive(red_);
+  if (int(SimDisplayToggle.getValue())==1)
+    SimDisplayToggle.setColorActive(switches_);
+  else
+    SimDisplayToggle.setColorActive(red_);
   if (int(DEBUGGUI.getValue())==1)
     DEBUGGUI.setColorActive(switches_);
   else

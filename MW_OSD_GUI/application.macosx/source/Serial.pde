@@ -37,13 +37,13 @@ String boxnames[] = { // names for dynamic generation of config GUI
     "ARM;",
     "ANGLE;",
     "HORIZON;",
-    "AIR MODE;",
     "BARO;",
     "MAG;",
     "CAMSTAB;",
     "GPS HOME;",
     "GPS HOLD;",
-    "MISSION;",
+//    "MISSION;",
+    "AIR MODE;",
     "OSD SW;"   
   };
 String strBoxNames = join(boxnames,""); 
@@ -338,18 +338,14 @@ public void DEFAULT(){
     loop();
     switch (Reset_result) {
       case JOptionPane.YES_OPTION:
-//        toggleMSP_Data = true;
-        for (int txTimes = 0; txTimes<3; txTimes++) {
+        for (int txTimes = 0; txTimes<1; txTimes++) {
           headSerialReply(MSP_OSD, 1);
           serialize8(OSD_DEFAULT);
           tailSerialReply();
           delay(100);
         }
-//        toggleMSP_Data = false;
-//        READinit();
+        delay(1000);     
         READconfigMSP_init();
-//        delay(2000);     
-//        ReadConfig=100;
         return;
       case JOptionPane.CANCEL_OPTION:
 //        SimControlToggle.setValue(1);
@@ -388,13 +384,16 @@ void SendCommand(int cmd){
         if(toggleModeItems[2].getValue()> 0) modebits |=1<<2;
         if(toggleModeItems[3].getValue()> 0) modebits |=1<<3;
         if(toggleModeItems[4].getValue()> 0) modebits |=1<<5;
-        if(toggleModeItems[5].getValue()> 0) modebits |=1<<8;
         if(toggleModeItems[6].getValue()> 0) modebits |=1<<10;
         if(toggleModeItems[7].getValue()> 0) modebits |=1<<11;
-        if(toggleModeItems[8].getValue()> 0) modebits |=1<<20;
+        if(toggleModeItems[8].getValue()> 0) modebits |=1<<28;
         if(toggleModeItems[9].getValue()> 0) modebits |=1<<19;
-//        if(toggleModeItems[8].getValue()> 0) modebits |=1<<16; //Also send LLIGHTS when OSD enabled - for testing
-//        if(toggleModeItems[5].getValue()> 0) modebits |=1<<12; //Also send PASS when CAMSTAB enabled - for testing
+
+        if(toggleModeItems[5].getValue()> 0) modebits |=1<<8;  //Send CAMSTAB
+//        if(toggleModeItems[5].getValue()> 0) modebits |=1<<16; //Also send LLIGHTS      when CAMSTAB enabled - for testing
+//        if(toggleModeItems[5].getValue()> 0) modebits |=1<<12; //Also send PASS         when CAMSTAB enabled - for testing
+//        if(toggleModeItems[5].getValue()> 0) modebits |=1<<20; //Also send MISSION MODE when CAMSTAB enabled - for testing
+//        if(toggleModeItems[5].getValue()> 0) modebits |=1<<29; //Also send ACROPLUS MODE when CAMSTAB enabled - for testing
         serialize32(modebits);
         serialize8(0);   // current setting
         tailSerialReply();
@@ -468,8 +467,8 @@ void SendCommand(int cmd){
       
       case MSP_BOXIDS:
         PortIsWriting = true;
-        headSerialReply(MSP_BOXIDS,23);
-        for (int i=0; i<23; i++) {
+        headSerialReply(MSP_BOXIDS,30);
+        for (int i=0; i<30; i++) {
         serialize8(i);
         }
         tailSerialReply();
@@ -698,7 +697,7 @@ void headSerialReply(int requestMSP, int s) {
 //}
 
 void tailSerialReply() {
-  if (outChecksum > 0) serialize8(outChecksum);
+  serialize8(outChecksum);
 }
 
 public void DelayTimer(int ms){
@@ -824,6 +823,7 @@ public void evaluateCommand(byte cmd, int size) {
           int eeaddressOSDH=read8();
           eeaddressOSD=eeaddressOSDL+(eeaddressOSDH<<8);
           eeindextxt="EEW: "+eeaddressOSD;   
+// System.out.println("OSD req:"+ eeaddressOSD);
           eeindexmessage.setValue(eeindextxt);
 
           if (eeaddressOSD>=eeaddressGUI){ // update base address

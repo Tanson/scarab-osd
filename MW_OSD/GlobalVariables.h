@@ -1,3 +1,4 @@
+
 #define POS_MASK        0x01FF
 #define PAL_MASK        0x0003
 #define PAL_SHFT             9
@@ -27,7 +28,6 @@
 
 // DEFINE CONFIGURATION MENU PAGES
 #define MINPAGE 0
-#define MAXPAGE 9
 
 #define PIDITEMS 10
 
@@ -93,30 +93,61 @@
 #define GPSSENSOR      8//0b00001000
 //#define SONAR         16//0b00010000
 
+#if defined (DEVELOPMENT)
+#define DEBUGDEF 1
+#else
+#define DEBUGDEF 0   
+#endif
 
 //General use variables
-struct {
-  uint8_t tenthSec;
-  uint8_t halfSec;
-  uint8_t Blink2hz;                          // This is turing on and off at 2hz
-  uint8_t Blink10hz;                         // This is turing on and off at 10hz
-  uint16_t lastCallSign;                          // Callsign_timer
-  uint8_t rssiTimer;
+struct  __timer {
+  uint8_t  tenthSec;
+  uint8_t  halfSec;
+  uint8_t  Blink2hz;                          // This is turing on and off at 2hz
+  uint8_t  Blink10hz;                         // This is turing on and off at 10hz
+  uint16_t lastCallSign;                      // Callsign_timer
+  uint8_t  rssiTimer;
 //  uint8_t accCalibrationTimer;
-  uint8_t magCalibrationTimer;
+  uint8_t  magCalibrationTimer;
   uint32_t fwAltitudeTimer;
   uint32_t seconds;
-  uint8_t MSP_active;
-  uint8_t GPS_active;
+  uint8_t  MSP_active;
+  uint8_t  GPS_active;
+  uint32_t alarms;                            // Alarm length timer
 }
 timer;
 
-struct {
+struct __flags {
   uint8_t ident;
   uint8_t box;
   uint8_t reset;
+  uint8_t signaltype;
 }
 flags;
+
+struct __cfg {
+    uint8_t  fw_althold_dir;
+    uint16_t fw_gps_maxcorr;                    // Degrees banking Allowed by GPS.
+    int16_t  fw_gps_rudder;                     // Maximum input of Rudder Allowed by GPS.
+    int16_t  fw_gps_maxclimb;                   // Degrees climbing . To much can stall the plane.
+    int16_t  fw_gps_maxdive;                    // Degrees Diving . To much can overspeed the plane.
+    uint16_t fw_climb_throttle;                 // Max allowed throttle in GPS modes.
+    uint16_t fw_cruise_throttle;                // Throttle to set for cruisespeed.
+    uint16_t fw_idle_throttle;                  // Lowest throttleValue during Descend
+    uint16_t fw_scaler_throttle;                // Adjust to Match Power/Weight ratio of your model
+    uint8_t  fw_roll_comp;                      // Adds Elevator Based on Roll Angle
+    uint8_t  fw_rth_alt;                        // Min Altitude to keep during RTH. (Max 200m)
+}
+cfg;
+
+#ifdef MENU_SERVO  
+#define MAX_SERVOS 8
+struct __servo {
+    uint16_t settings[5][MAX_SERVOS];
+}
+servo;
+#endif //MENU_SERVO  
+
 
 uint16_t debug[4];   // int32_t ?...
 int8_t menudir;
@@ -130,8 +161,8 @@ uint16_t cycleTime;
 uint16_t I2CError;
 uint8_t oldROW=0;
 uint8_t cells=0;
-#if defined SETCONFIG
-  uint8_t bfconfig[SETCONFIG];
+#if defined CORRECT_MSP_BF1
+  uint8_t bfconfig[25];
 #endif
 
 // Config status and cursor location
@@ -140,6 +171,7 @@ uint8_t oldscreenlayout=0;
 uint8_t ROW=10;
 uint8_t COL=3;
 int8_t configPage=1;
+int8_t previousconfigPage=1;
 uint8_t configMode=0;
 uint8_t fontMode = 0;
 uint8_t fontData[54];
@@ -152,7 +184,7 @@ uint8_t settingsMode=0;
 uint32_t MSP_OSD_timer=0;
 
 // Mode bits
-struct {
+struct __mode {
   uint8_t armed;
   uint8_t stable;
   uint8_t horizon;
@@ -162,11 +194,12 @@ struct {
   uint16_t gpshome;
   uint16_t gpshold;
   uint16_t passthru;
+  uint32_t air;
+  uint32_t acroplus;
   uint32_t osd_switch;
   uint32_t llights;
   uint32_t gpsmission;
   uint32_t gpsland;
-  uint32_t air;
 }mode;
 
 // Settings Locations
@@ -273,7 +306,7 @@ uint16_t Settings16[EEPROM16_SETTINGS];
 
 
 // For Settings Defaults
-uint8_t EEPROM_DEFAULT[EEPROM_SETTINGS] = {
+PROGMEM const uint8_t EEPROM_DEFAULT[EEPROM_SETTINGS] = {
 MWOSDVER,   // used for check              0
 0,   // S_UNUSED_5                  1
 0, // S_VIDVOLTAGEMIN             2
@@ -318,7 +351,7 @@ MWOSDVER,   // used for check              0
 0,   // GPStime                     37a
 0,   // GPSTZ +/-                   37b
 0,   // GPSTZ                       37c
-0,   // DEBUG                       37e
+DEBUGDEF,   // DEBUG                       37e
 1,   // SCROLLING LADDERS           37f
 1,   // SHOW GIMBAL ICON            37g
 1,   // SHOW VARIO                  37h
@@ -327,12 +360,12 @@ MWOSDVER,   // used for check              0
 0,   // S_HORIZON_ELEVATION         40h
 1,   // S_TIMER                     41h
 1,   // S_MODESENSOR                42h
-1,   // S_SIDEBARTOPS               43h
+0,   // S_SIDEBARTOPS               43h
 4,   // S_UNUSED_6,
 0,   // S_UNUSED_1, S_AMPMAXL,
 0,   // S_UNUSED_2, S_AMPMAXH,
 0,   // S_RCWSWITCH,
-4,   // S_RCWSWITCH_CH,
+5,   // S_RCWSWITCH_CH,
 0,   // S_HUDSW0, LOW / NORMAL
 1,   // S_HUDSW1, HIGH / OSDSW
 0,   // S_HUDSW2, MID
@@ -340,12 +373,12 @@ MWOSDVER,   // used for check              0
 100, // S_ALTITUDE_ALARM,
 100, // S_SPEED_ALARM,
 30,  // S_FLYTIME_ALARM
-0x53,   // S_CS0,
-0x48,   // S_CS1,
-0x49,   // S_CS2,
-0x4B,   // S_CS3,
-0x49,   // S_CS4,
-0x20,   // S_CS5,
+0x4D,   // S_CS0,
+0x57,   // S_CS1,
+0x4F,   // S_CS2,
+0x53,   // S_CS3,
+0x44,   // S_CS4,
+0x00,   // S_CS5,
 0x20,   // S_CS6,
 0x20,   // S_CS7,
 0x20,   // S_CS8,
@@ -353,7 +386,7 @@ MWOSDVER,   // used for check              0
 
 };
 
-uint16_t EEPROM16_DEFAULT[EEPROM16_SETTINGS] = {
+PROGMEM const uint16_t EEPROM16_DEFAULT[EEPROM16_SETTINGS] = {
   0,// S16_AMPMAX,
   0,// S16_AMPZERO,
   150,// S16_AMPDIVIDERRATIO,
@@ -363,7 +396,57 @@ uint16_t EEPROM16_DEFAULT[EEPROM16_SETTINGS] = {
   600,// S16_SPARE2,
   
 };
-uint16_t SCREENLAYOUT_DEFAULT[EEPROM_SETTINGS] = {
+
+
+enum Positions {
+  GPS_numSatPosition,
+  GPS_directionToHomePosition,
+  GPS_distanceToHomePosition,
+  speedPosition,
+  GPS_angleToHomePosition,
+  MwGPSAltPosition,
+  sensorPosition,
+  MwHeadingPosition,
+  MwHeadingGraphPosition,
+  MwAltitudePosition,
+  MwClimbRatePosition,
+  CurrentThrottlePosition,
+  flyTimePosition,
+  onTimePosition,
+  motorArmedPosition,
+  pitchAnglePosition,
+  rollAnglePosition,
+  MwGPSLatPositionTop,
+  MwGPSLonPositionTop,
+  rssiPosition,
+  temperaturePosition,
+  voltagePosition,
+  vidvoltagePosition,
+  amperagePosition,
+  pMeterSumPosition,
+  horizonPosition,
+  SideBarPosition,
+  SideBarScrollPosition,
+  SideBarHeightPosition,
+  SideBarWidthPosition,
+  gimbalPosition,
+  GPS_timePosition,
+  SportPosition,
+  ModePosition,
+  MapModePosition,
+  MapCenterPosition,
+  APstatusPosition,
+  wattPosition,
+  glidescopePosition,
+  callSignPosition,
+  debugPosition,
+
+  POSITIONS_SETTINGS
+};
+
+uint16_t screenPosition[POSITIONS_SETTINGS];
+
+PROGMEM const uint16_t SCREENLAYOUT_DEFAULT[POSITIONS_SETTINGS] = {
 
 (LINE02+2)|DISPLAY_ALWAYS,  // GPS_numSatPosition
 (LINE02+22)|DISPLAY_ALWAYS,   // GPS_directionToHomePosition
@@ -377,7 +460,7 @@ uint16_t SCREENLAYOUT_DEFAULT[EEPROM_SETTINGS] = {
 (LINE07+23)|DISPLAY_ALWAYS,   // MwAltitudePosition
 (LINE07+22)|DISPLAY_ALWAYS,   // MwClimbRatePosition
 (LINE12+22)|DISPLAY_ALWAYS,   // CurrentThrottlePosition
-(LINE13+22)|DISPLAY_ALWAYS,   // flyTimePosition
+(LINE13+22)|DISPLAY_ALWAYS,   // UNUSED flyTimePosition
 (LINE13+22)|DISPLAY_ALWAYS,   // onTimePosition
 (LINE11+11)|DISPLAY_ALWAYS,   // motorArmedPosition
 (LINE10+2)|DISPLAY_NEVER,   // pitchAnglePosition
@@ -410,7 +493,7 @@ uint16_t SCREENLAYOUT_DEFAULT[EEPROM_SETTINGS] = {
 };
 
 
-uint16_t SCREENLAYOUT_DEFAULT_OSDSW[EEPROM_SETTINGS] = {
+PROGMEM const uint16_t SCREENLAYOUT_DEFAULT_OSDSW[POSITIONS_SETTINGS] = {
 
 (LINE02+2)|DISPLAY_NEVER,  // GPS_numSatPosition
 (LINE13+19)|DISPLAY_ALWAYS,   // GPS_directionToHomePosition
@@ -424,7 +507,7 @@ uint16_t SCREENLAYOUT_DEFAULT_OSDSW[EEPROM_SETTINGS] = {
 (LINE02+23)|DISPLAY_NEVER,   // MwAltitudePosition
 (LINE07+23)|DISPLAY_NEVER,   // MwClimbRatePosition
 (LINE12+22)|DISPLAY_NEVER,   // CurrentThrottlePosition
-(LINE13+22)|DISPLAY_ALWAYS,   // flyTimePosition
+(LINE13+22)|DISPLAY_ALWAYS,   // UNUSED flyTimePosition
 (LINE13+22)|DISPLAY_ALWAYS,   // onTimePosition
 (LINE11+11)|DISPLAY_ALWAYS,   // motorArmedPosition
 (LINE10+2)|DISPLAY_NEVER,   // pitchAnglePosition
@@ -437,9 +520,9 @@ uint16_t SCREENLAYOUT_DEFAULT_OSDSW[EEPROM_SETTINGS] = {
 (LINE11+3)|DISPLAY_ALWAYS,   // vidvoltagePosition
 (LINE13+13)|DISPLAY_NEVER,   // amperagePosition
 (LINE13+23)|DISPLAY_NEVER,   // pMeterSumPosition
-(LINE07+14)|DISPLAY_NEVER,   // horizonPosition
+(LINE07+14)|DISPLAY_NEVER,   // AHIPosition
+(LINE07+7)|DISPLAY_NEVER,   // horizonPosition
 (LINE07+7)|DISPLAY_NEVER,   // SideBarPosition
-(LINE07+7)|DISPLAY_NEVER,   // SideBarScroll Position
 (3)|DISPLAY_NEVER,   // SideBarHeight Position
 (7)|DISPLAY_NEVER,   // SideBarWidth Position
 (LINE05+2)|DISPLAY_NEVER,   // Gimbal Position
@@ -451,55 +534,10 @@ uint16_t SCREENLAYOUT_DEFAULT_OSDSW[EEPROM_SETTINGS] = {
 (LINE04+10)|DISPLAY_NEVER,   // APstatusPosition
 (LINE12+13)|DISPLAY_NEVER,   // wattPosition
 (LINE07+6)|DISPLAY_NEVER,   // glidescopePosition
-(LINE07+7)|DISPLAY_NEVER,   // SideBarPosition
-(LINE07+7)|DISPLAY_NEVER,   // SideBarScrollPosition
+(LINE10+10)|DISPLAY_NEVER,   // CallSign Position
+(LINE08+10)|DISPLAY_ALWAYS,   // Debug Position
 
 };
-
-/*
-uint16_t SCREENLAYOUT_DEFAULT_2[EEPROM_SETTINGS] = {
-
-LINE02+2 |DISPLAY_ALWAYS,  // GPS_numSatPosition
-LINE02+22 |DISPLAY_ALWAYS,   // GPS_directionToHomePosition
-LINE02+24 |DISPLAY_ALWAYS,   // GPS_distanceToHomePosition
-LINE07+3 |DISPLAY_ALWAYS,   // speedPosition
-LINE05+24 |DISPLAY_ALWAYS,   // GPS_angleToHomePosition
-LINE03+24 |DISPLAY_ALWAYS,   // MwGPSAltPosition
-LINE02+6 |DISPLAY_ALWAYS,   // sensorPosition
-LINE04+24 |DISPLAY_ALWAYS,   // MwHeadingPosition
-LINE02+10 |DISPLAY_ALWAYS,   // MwHeadingGraphPosition
-LINE07+23 |DISPLAY_ALWAYS,   // MwAltitudePosition
-LINE07+22 |DISPLAY_ALWAYS,   // MwClimbRatePosition
-LINE12+22 |DISPLAY_ALWAYS,   // CurrentThrottlePosition
-LINE13+22 |DISPLAY_ALWAYS,   // flyTimePosition
-LINE13+22 |DISPLAY_ALWAYS,   // onTimePosition
-LINE11+11 |DISPLAY_ALWAYS,   // motorArmedPosition
-LINE10+2 |DISPLAY_ALWAYS,   // MwGPSLatPosition  SPARE
-LINE10+15 |DISPLAY_ALWAYS,   // MwGPSLonPosition SPARE
-LINE01+2 |DISPLAY_ALWAYS,   // MwGPSLatPositionTop      // On top of screen
-LINE01+15 |DISPLAY_ALWAYS,   // MwGPSLonPositionTop      // On top of screen
-LINE12+3 |DISPLAY_ALWAYS,   // rssiPosition
-LINE09+3 |DISPLAY_ALWAYS,   // temperaturePosition
-LINE13+3 |DISPLAY_ALWAYS,  // voltagePosition
-LINE11+3 |DISPLAY_ALWAYS,   // vidvoltagePosition
-LINE13+9 |DISPLAY_ALWAYS,   // amperagePosition
-LINE13+16 |DISPLAY_ALWAYS,   // pMeterSumPosition
-LINE07+7 |DISPLAY_ALWAYS,   // horizonPosition
-LINE07+7 |DISPLAY_ALWAYS,   // SideBarPosition
-LINE07+7 |DISPLAY_ALWAYS,   // SideBarScrollPosition
-LINE10+10 |DISPLAY_ALWAYS,   // CallSign Position
-LINE08+10 |DISPLAY_ALWAYS,   // Debug Position
-LINE05+2 |DISPLAY_ALWAYS,   // Gimbal Position
-LINE12+11 |DISPLAY_ALWAYS,  // GPS_time Position
-LINE09+22 |DISPLAY_ALWAYS,   // SportPosition
-LINE04+2 |DISPLAY_ALWAYS,   // modePosition
-LINE02+22 |DISPLAY_NEVER,   // MapModePosition
-LINE07+15 |DISPLAY_NEVER,   // MapCenterPosition
-LINE04+10 |DISPLAY_ALWAYS,   // APstatusPosition
-LINE12+9 |DISPLAY_ALWAYS,   // wattPosition
-
-};
-*/
 
 static uint8_t P8[PIDITEMS], I8[PIDITEMS], D8[PIDITEMS];
 
@@ -513,18 +551,25 @@ static uint8_t thrMid8;
 static uint8_t thrExpo8;
 static uint16_t tpa_breakpoint16;
 static uint8_t rcYawExpo8;
+static uint8_t FCProfile;
+static uint8_t PreviousFCProfile;
+static uint8_t CurrentFCProfile;
+static uint8_t PIDController;
+static uint16_t LoopTime;
 
 int32_t  MwAltitude=0;                         // This hold barometric value
 int32_t  old_MwAltitude=0;                     // This hold barometric value
 
 
-int MwAngle[2]={0,0};           // Those will hold Accelerator Angle
-static uint16_t MwRcData[8]={   // This hold receiver pulse signal
-  1500,1500,1500,1500,1500,1500,1500,1500} ;
+int16_t MwAngle[2]={0,0};           // Those will hold Accelerometer Angle
+static uint16_t MwRcData[1+16]={   // This hold receiver pulse signal
+  1500,1500,1500,1500,1500,1500,1500,1500,1500,1500,1500,1500,1500,1500,1500,1500} ;
 
 // for analogue / PWM sensor filtering 
 #define SENSORFILTERSIZE 8
 #define SENSORTOTAL 5
+#define FHBANDWIDTH 100
+
 int16_t sensorfilter[SENSORTOTAL][SENSORFILTERSIZE+2]; 
 
 uint16_t  MwSensorPresent=0;
@@ -540,8 +585,8 @@ uint8_t GPS_fix=0;
 uint8_t GPS_frame_timer=0;
 int32_t GPS_latitude;
 int32_t GPS_longitude;
-int16_t GPS_altitude;
-int16_t GPS_home_altitude;
+int32_t GPS_altitude;
+int32_t GPS_home_altitude;
 int16_t previousfwaltitude=0;
 int16_t interimfwaltitude=0;
 uint16_t GPS_speed;
@@ -583,8 +628,8 @@ unsigned long sidebarsMillis = 0;
 unsigned long sidebaraMillis = 0;
 
 //For Current Throttle
-uint16_t LowT = 1100;
-uint16_t HighT = 1900;
+uint16_t LowT = LOWTHROTTLE;
+uint16_t HighT = HIGHTHROTTLE;
 
 // For Time
 uint16_t onTime=0;
@@ -598,7 +643,7 @@ static int16_t MwHeading=0;
 // For Amperage
 float amperage = 0;                // its the real value x10
 float amperagesum = 0;
-uint16_t MWAmperage=0;
+int16_t MWAmperage=0;
 
 // Rssi
 int16_t rssi =0;   // uint8_t ?
@@ -670,6 +715,7 @@ uint16_t flyingTime=0;
 #define MSP_BOXNAMES             116   //out message         the aux switch names
 #define MSP_PIDNAMES             117   //out message         the PID names
 #define MSP_BOXIDS               119   //out message         get the permanent IDs associated to BOXes
+#define MSP_SERVO_CONF           120    //out message         Servo settings
 #define MSP_NAV_STATUS           121   //out message	     Returns navigation status
 
 #define MSP_CELLS                130   //out message         FrSky SPort Telemtry
@@ -686,6 +732,7 @@ uint16_t flyingTime=0;
 #define MSP_SET_WP               209   //in message          sets a given WP (WP#,lat, lon, alt, flags)
 #define MSP_SELECT_SETTING       210   //in message          Select Setting Number (0-2)
 #define MSP_SET_HEAD             211   //in message          define a new heading hold direction
+#define MSP_SET_SERVO_CONF       212    //in message          Servo settings
 
 #define MSP_BIND                 240   //in message          no param
 
@@ -696,10 +743,20 @@ uint16_t flyingTime=0;
 #define MSP_DEBUGMSG             253   //out message         debug string buffer
 #define MSP_DEBUG                254   //out message         debug1,debug2,debug3,debug4
 
+// Cleanflight/Betaflight specific
+#define MSP_PID_CONTROLLER       59    //in message          no param
+#define MSP_SET_PID_CONTROLLER   60    //out message         sets a given pid controller
+
+// Cleanflight specific
+#define MSP_LOOP_TIME            73    //out message         Returns FC cycle time i.e looptime 
+#define MSP_SET_LOOP_TIME        74    //in message          Sets FC cycle time i.e looptime parameter
+
 // Baseflight specific
-#define MSP_SET_CONFIG           67    //in message          baseflight-specific settings save
 #define MSP_CONFIG               66    //out message         baseflight-specific settings that aren't covered elsewhere
-#define SETCONGFIG 25                  //for BASEFLIGHT20150627
+#define MSP_SET_CONFIG           67    //in message          baseflight-specific settings save
+// Baseflight FIXEDWING specific
+#define MSP_FW_CONFIG            123   //out message         Returns parameters specific to Flying Wing mode
+#define MSP_SET_FW_CONFIG        216   //in message          Sets parameters specific to Flying Wing mode
 
 // End of imported defines from Multiwii Serial Protocol MultiWii_shared svn r1333
 // ---------------------------------------------------------------------------------------
@@ -720,55 +777,108 @@ uint16_t flyingTime=0;
 // End private MSP for use with the GUI
 
 
-const char blank_text[] PROGMEM    = "";
-const char nodata_text[] PROGMEM    = "NO DATA";
-const char nogps_text[] PROGMEM     = " NO GPS";
-const char satlow_text[] PROGMEM    = "LOW SATS";
-const char disarmed_text[] PROGMEM  = "DISARMED";
-const char armed_text[] PROGMEM     = " ARMED";
-const char APRTHtext[] PROGMEM      = "AUTO RTH";
-const char APHOLDtext[] PROGMEM     = "AUTO HOLD";
+const char blank_text[]     PROGMEM = "";
+const char nodata_text[]    PROGMEM = "NO DATA";
+const char nogps_text[]     PROGMEM = " NO GPS";
+const char satlow_text[]    PROGMEM = "LOW SATS";
+const char disarmed_text[]  PROGMEM = "DISARMED";
+const char armed_text[]     PROGMEM = " ARMED";
+const char APRTHtext[]      PROGMEM = "AUTO RTH";
+const char APHOLDtext[]     PROGMEM = "AUTO HOLD";
 const char APWAYPOINTtext[] PROGMEM = " MISSION";
-const char lowvolts_text[] PROGMEM  = "LOW VOLTS";
+const char lowvolts_text[]  PROGMEM = "LOW VOLTS";
 
-// For Status / warning messages
-const PROGMEM char * const message_item[] =
+// For Alarm / Message text
+const PROGMEM char * const message_text[] =
 {   
-  blank_text,  //0
+  blank_text,     //0
+  APRTHtext,      //1
+  APHOLDtext,     //2
+  APWAYPOINTtext,
+};
+
+const PROGMEM char * const alarm_text[] =
+{   
+  blank_text,     //0
   disarmed_text,  //1
   armed_text,     //2
   nodata_text,
   nogps_text,
   satlow_text,
-  APRTHtext,
-  APHOLDtext,
-  APWAYPOINTtext,
   lowvolts_text,
 };
 
+struct __alarms {
+  uint8_t active;
+  uint8_t  queue;
+  uint8_t  index;
+  uint8_t  alarm;
+}alarms;
 
-// For Intro
-#ifdef INTRO_VERSION
-const char message0[] PROGMEM = INTRO_VERSION;
-#else
-const char message0[] PROGMEM = MWVERS;
-#endif
-
-#if defined LOADFONT_DEFAULT || defined LOADFONT_LARGE
+#if defined LOADFONT_DEFAULT || defined LOADFONT_LARGE || defined LOADFONT_BOLD
 const char messageF0[] PROGMEM = "DO NOT POWER OFF";
 const char messageF1[] PROGMEM = "SCREEN WILL GO BLANK";
 const char messageF2[] PROGMEM = "UPDATE COMPLETE";
 #endif
 
-//const char message1[] PROGMEM = "VIDEO SIGNAL NTSC";
-//const char message2[] PROGMEM = "VIDEO SIGNAL PAL ";
-const char message5[]  PROGMEM = "FC VERSION:";
-const char message6[]  PROGMEM = "OPEN MENU: THRT MIDDLE";
-const char message7[]  PROGMEM = "+YAW RIGHT";
-const char message8[]  PROGMEM = "+PITCH FULL";
-const char message9[]  PROGMEM = "ID:";         // Call Sign on the beggining of the transmission   
-const char message10[] PROGMEM = "TZ UTC:"; //haydent - Time Zone & DST Setting
-//const char message11[] PROGMEM = "MORE IN: GUI+CONFIG.H"; 
+// For Intro
+#ifdef INTRO_VERSION
+const char introtext0[] PROGMEM = INTRO_VERSION;
+#else
+const char introtext0[] PROGMEM = MWVERS;
+#endif
+const char introtext1[]  PROGMEM = "MENU:THRT MIDDLE";
+const char introtext2[]  PROGMEM = "    +YAW RIGHT";
+const char introtext3[]  PROGMEM = "    +PITCH FULL";
+const char introtext4[]  PROGMEM = "ID:";
+const char introtext5[]  PROGMEM = "SI:";
+const char introtextblank[]  PROGMEM = "";
+
+// Intro
+const PROGMEM char * const intro_item[] =
+{   
+  introtext0,
+  introtextblank,
+#ifdef INTRO_MENU
+  introtext1,
+  introtext2,
+  introtext3,
+#else
+  introtextblank,
+  introtextblank,
+  introtextblank,
+#endif
+  introtextblank,
+#ifdef INTRO_CALLSIGN
+  introtext4,
+#else
+  introtextblank,
+#endif
+#ifdef INTRO_SIGNALTYPE
+  introtext5,
+#else
+  introtextblank,
+#endif
+};
+
+#ifdef AUTOCAM 
+const char signaltext0[]  PROGMEM = "AUTO-NTSC";
+const char signaltext1[]  PROGMEM = "AUTO-PAL";
+const char signaltext2[]  PROGMEM = "NOT DETECTED-NTSC";
+const char signaltext3[]  PROGMEM = "NOT DETECTED-PAL";
+#else
+const char signaltext0[]  PROGMEM = "NTSC";
+const char signaltext1[]  PROGMEM = "PAL";
+const char signaltext2[]  PROGMEM = "";
+const char signaltext3[]  PROGMEM = "";
+#endif
+const PROGMEM char * const signal_type[] =
+{   
+  signaltext0,
+  signaltext1,
+  signaltext2,
+  signaltext3,
+};
 
 // For Config menu common
 const char configMsgON[]   PROGMEM = "ON";
@@ -777,6 +887,8 @@ const char configMsgEXT[]  PROGMEM = "EXIT";
 const char configMsgSAVE[] PROGMEM = "SAVE+EXIT";
 const char configMsgPGS[]  PROGMEM = "<PAGE>";
 const char configMsgMWII[] PROGMEM = "USE FC";
+
+// For APSTATUS
 
 // For Config pages
 //-----------------------------------------------------------Page0
@@ -790,6 +902,8 @@ const char configMsg06[] PROGMEM = "MAH USED";
 const char configMsg07[] PROGMEM = "MAX AMPS";
 //-----------------------------------------------------------Page1
 const char configMsg10[] PROGMEM = "PID CONFIG";
+
+#ifndef USE_MSP_PIDNAMES
 const char configMsg11[] PROGMEM = "ROLL";
 const char configMsg12[] PROGMEM = "PITCH";
 const char configMsg13[] PROGMEM = "YAW";
@@ -797,6 +911,11 @@ const char configMsg14[] PROGMEM = "ALT";
 const char configMsg15[] PROGMEM = "GPS";
 const char configMsg16[] PROGMEM = "LEVEL";
 const char configMsg17[] PROGMEM = "MAG";
+#ifdef MENU_PID_VEL
+const char configMsg18[] PROGMEM = "Z_VEL";
+#endif
+#endif /* !USE_MSP_PIDNAMES */
+
 //-----------------------------------------------------------Page2
 const char configMsg20[] PROGMEM = "RC TUNING";
 const char configMsg21[] PROGMEM = "RC RATE";
@@ -806,11 +925,11 @@ const char configMsg24[] PROGMEM = "YAW RATE";
 const char configMsg25[] PROGMEM = "TPA";
 const char configMsg26[] PROGMEM = "THROTTLE MID";
 const char configMsg27[] PROGMEM = "THROTTLE EXPO";
-#if defined(CLEANFLIGHT180)|| defined (BASEFLIGHT20150627)
+#if defined CORRECT_MENU_RCT1
   const char configMsg23a[] PROGMEM = "ROLL RATE";
   const char configMsg23b[] PROGMEM = "PITCH RATE";
 #endif
-#if defined(CLEANFLIGHT190)
+#if defined CORRECT_MENU_RCT2
   const char configMsg23a[] PROGMEM = "ROLL RATE";
   const char configMsg23b[] PROGMEM = "PITCH RATE";
   const char configMSg28[]  PROGMEM = "TPA BREAKPOINT";
@@ -877,71 +996,42 @@ const char configMsg93[] PROGMEM = "SPEED";
 const char configMsg94[] PROGMEM = "TIMER";
 const char configMsg95[] PROGMEM = "MAH X100";
 const char configMsg96[] PROGMEM = "AMPS";
+//-----------------------------------------------------------Page10
+const char configMsg100[] PROGMEM = "ADVANCE TUNING";
+const char configMsg101[] PROGMEM = "PROFILE";
+const char configMsg102[] PROGMEM = "PID CONTROLLER";
+const char configMsg103[] PROGMEM = "LOOPTIME";
+//-----------------------------------------------------------BF FIXEDWING Page
+const char configMsg110[] PROGMEM = "FIXEDWING";
+const char configMsg111[] PROGMEM = "MAX CORRECT";
+const char configMsg112[] PROGMEM = "RUDDER";
+const char configMsg113[] PROGMEM = "MAX CLIMB";
+const char configMsg114[] PROGMEM = "MAX DIVE";
+const char configMsg115[] PROGMEM = "THR CLIMB";
+const char configMsg116[] PROGMEM = "THR CRUISE";
+const char configMsg117[] PROGMEM = "THR IDLE";
+const char configMsg118[] PROGMEM = "RTH ALT";
+//-----------------------------------------------------------SERVO Page
+const char configMsg120[] PROGMEM = "SERVOS";
+const char configMsg121[] PROGMEM = "S0";
+const char configMsg122[] PROGMEM = "S1";
+const char configMsg123[] PROGMEM = "S2";
+const char configMsg124[] PROGMEM = "S3";
+const char configMsg125[] PROGMEM = "S4";
+const char configMsg126[] PROGMEM = "S5";
+const char configMsg127[] PROGMEM = "S6";
+const char configMsg128[] PROGMEM = "S7";
 
 
 // POSITION OF EACH CHARACTER OR LOGO IN THE MAX7456
 const unsigned char speedUnitAdd[2] ={
-  0xa5,0xa6} ; // [0][0] and [0][1] = Km/h   [1][0] and [1][1] = Mph
-const unsigned char temperatureUnitAdd[2] = {
-  0x0e,0x0d};
+  SYM_KMH,SYM_MPH} ; // [0][0] and [0][1] = Km/h   [1][0] and [1][1] = Mph
 
-const unsigned char MwAltitudeAdd[2]={
-  0xa7,0xa8};
-const unsigned char MwClimbRateAdd[2]={
-  0x9f,0x99};
-const unsigned char GPS_distanceToHomeAdd[2]={
-  0xbb,0xb9};
-const unsigned char MwGPSAltPositionAdd[2]={
-  0xa7,0xa8};
+const unsigned char temperatureUnitAdd[2] ={
+  SYM_TEMP_C,SYM_TEMP_F};
 
-
-enum Positions {
-  GPS_numSatPosition,
-  GPS_directionToHomePosition,
-  GPS_distanceToHomePosition,
-  speedPosition,
-  GPS_angleToHomePosition,
-  MwGPSAltPosition,
-  sensorPosition,
-  MwHeadingPosition,
-  MwHeadingGraphPosition,
-  MwAltitudePosition,
-  MwClimbRatePosition,
-  CurrentThrottlePosition,
-  flyTimePosition,
-  onTimePosition,
-  motorArmedPosition,
-  pitchAnglePosition,
-  rollAnglePosition,
-  MwGPSLatPositionTop,
-  MwGPSLonPositionTop,
-  rssiPosition,
-  temperaturePosition,
-  voltagePosition,
-  vidvoltagePosition,
-  amperagePosition,
-  pMeterSumPosition,
-  horizonPosition,
-  SideBarPosition,
-  SideBarScrollPosition,
-  SideBarHeightPosition,
-  SideBarWidthPosition,
-  gimbalPosition,
-  GPS_timePosition,
-  SportPosition,
-  ModePosition,
-  MapModePosition,
-  MapCenterPosition,
-  APstatusPosition,
-  wattPosition,
-  glidescopePosition,
-  callSignPosition,
-  debugPosition,
-
-  POSITIONS_SETTINGS
-};
-
-uint16_t screenPosition[POSITIONS_SETTINGS];
+const unsigned char UnitsIcon[8]={
+  SYM_ALTM,SYM_ALTFT,SYM_DISTHOME_M,SYM_DISTHOME_FT,SYM_ALTKM,SYM_ALTMI,SYM_DISTHOME_KM,SYM_DISTHOME_MI};
 
 #define REQ_MSP_IDENT     (1 <<  0)
 #define REQ_MSP_STATUS    (1 <<  1)
@@ -958,10 +1048,33 @@ uint16_t screenPosition[POSITIONS_SETTINGS];
 #define REQ_MSP_FONT      (1 << 12)
 #define REQ_MSP_DEBUG     (1 << 13)
 #define REQ_MSP_CELLS     (1 << 14)
-#define REQ_MSP_NAV_STATUS  32768 //(1 << 15)
-#define REQ_MSP_CONFIG  32768 //(1 << 15)
-#define REQ_MSP_MISC      65536 // (1 << 16)
-#define REQ_MSP_ALARMS    131072 // (1 << 17)
+#define REQ_MSP_NAV_STATUS     (1L<<15)
+#define REQ_MSP_CONFIG         (1L<<15)
+#define REQ_MSP_MISC           (1L<<16)
+#define REQ_MSP_ALARMS         (1L<<17)
+#define REQ_MSP_PID_CONTROLLER (1L<<18)
+#define REQ_MSP_LOOP_TIME      (1L<<19) 
+#define REQ_MSP_FW_CONFIG      (1L<<20) 
+#define REQ_MSP_PIDNAMES       (1L<<21)
+#define REQ_MSP_SERVO_CONF     (1L<<22)
+
+// Menu selections
+const PROGMEM char * const menu_choice_unit[] =
+{   
+  configMsg710,
+  configMsg711,
+};
+// Menu selections
+const PROGMEM char * const menu_choice_video[] =
+{   
+  configMsg720,
+  configMsg721,
+};// Menu selections
+const PROGMEM char * const menu_choice_ref[] =
+{   
+  configMsg731,
+  configMsg730,
+};
 
 // Menu
 //PROGMEM const char *menu_stats_item[] =
@@ -976,6 +1089,18 @@ const PROGMEM char * const menu_stats_item[] =
   configMsg07,
 };
 
+#ifdef USE_MSP_PIDNAMES
+
+#define PIDNAME_BUFSIZE  8
+#ifdef MENU_PID_VEL
+#define PIDNAME_NUMITEMS 8
+#else
+#define PIDNAME_NUMITEMS 7
+#endif
+
+char menu_pid[PIDNAME_NUMITEMS][PIDNAME_BUFSIZE];
+
+#else /* USE_MSP_PIDNAMES */
 const PROGMEM char * const menu_pid[] = 
 {   
   configMsg11,
@@ -985,11 +1110,15 @@ const PROGMEM char * const menu_pid[] =
   configMsg15,
   configMsg16,
   configMsg17,
+#ifdef MENU_PID_VEL
+  configMsg18,
+#endif
 };
+#endif
 
 const PROGMEM char * const menu_rc[] = 
 {   
-  #if defined(CLEANFLIGHT190)
+  #if defined CORRECT_MENU_RCT2
     configMsg21,
     configMsg22,
     configMsg23a,
@@ -999,7 +1128,7 @@ const PROGMEM char * const menu_rc[] =
     configMsg26,
     configMsg27,
     configMSg28,
-  #elif defined(CLEANFLIGHT180) || defined (BASEFLIGHT20150627) 
+  #elif defined CORRECT_MENU_RCT1 
     configMsg21,
     configMsg22,
     configMsg23a,
@@ -1088,18 +1217,78 @@ const PROGMEM char * const menu_alarm_item[] =
   configMsg96,
 };
 
+const PROGMEM char * const menu_profile[] = 
+{   
+  configMsg101,
+  configMsg102,
+  configMsg103,
+};
+
+const PROGMEM char * const menu_fixedwing_bf[] = 
+{   
+  configMsg111,
+  configMsg112,
+  configMsg113,
+  configMsg114,
+  configMsg115,
+  configMsg116,
+  configMsg117,
+  configMsg118,
+};
+
+const PROGMEM char * const menu_servo[] = 
+{   
+  configMsg121,
+  configMsg122,
+  configMsg123,
+  configMsg124,
+  configMsg125,
+  configMsg126,
+  configMsg127,
+  configMsg128,
+};
+
 const PROGMEM char * const menutitle_item[] = 
 {   
+#ifdef MENU_STAT
   configMsg00,
+#endif
+#ifdef MENU_PID
   configMsg10,
+#endif
+#ifdef MENU_RC
   configMsg20,
+#endif
+#ifdef MENU_SERVO
+  configMsg120,
+#endif
+#ifdef MENU_FIXEDWING
+  configMsg110,
+#endif
+#ifdef MENU_VOLTAGE
   configMsg30,
+#endif
+#ifdef MENU_RSSI
   configMsg40,
+#endif
+#ifdef MENU_CURRENT
   configMsg50,
+#endif
+#ifdef MENU_DISPLAY
   configMsg60,
+#endif
+#ifdef MENU_ADVANCED
   configMsg70,
+#endif
+#ifdef MENU_GPS_TIME
   configMsg80,
+#endif
+#ifdef MENU_ALARMS
   configMsg90,
+#endif
+#ifdef MENU_PROFILE
+  configMsg100,
+#endif
 };
 
 const PROGMEM char * const menu_on_off[] = 
@@ -1108,4 +1297,231 @@ const PROGMEM char * const menu_on_off[] =
   configMsgON,
 };
 
+
+#ifdef PROTOCOL_MAVLINK
+
+#define MAVLINK_MSG_ID_HEARTBEAT 0
+#define MAVLINK_MSG_ID_HEARTBEAT_MAGIC 50
+#define AVLINK_MSG_ID_HEARTBEAT_LEN 9
+#define MAVLINK_MSG_ID_VFR_HUD 74
+#define MAVLINK_MSG_ID_VFR_HUD_MAGIC 20
+#define MAVLINK_MSG_ID_VFR_HUD_LEN 20
+#define MAVLINK_MSG_ID_ATTITUDE 30
+#define MAVLINK_MSG_ID_ATTITUDE_MAGIC 39
+#define MAVLINK_MSG_ID_ATTITUDE_LEN 28
+#define MAVLINK_MSG_ID_GPS_RAW_INT 24
+#define MAVLINK_MSG_ID_GPS_RAW_INT_MAGIC 24
+#define MAVLINK_MSG_ID_GPS_RAW_INT_LEN 30
+#define MAVLINK_MSG_ID_RC_CHANNELS_RAW 35
+#define MAVLINK_MSG_ID_RC_CHANNELS_RAW_MAGIC 244
+#define MAVLINK_MSG_ID_RC_CHANNELS_RAW_LEN 22    
+#define MAVLINK_MSG_ID_SYS_STATUS 1
+#define MAVLINK_MSG_ID_SYS_STATUS_MAGIC 124
+#define MAVLINK_MSG_ID_SYS_STATUS_LEN 31  
+#define MAVLINK_MSG_ID_REQUEST_DATA_STREAM 66
+#define MAVLINK_MSG_ID_REQUEST_DATA_STREAM_MAGIC 148
+#define MAVLINK_MSG_ID_REQUEST_DATA_STREAM_LEN 9
+
+#define MAV_DATA_STREAM_RAW_SENSORS 1
+#define MAV_DATA_STREAM_EXTENDED_STATUS 2
+#define MAV_DATA_STREAM_RC_CHANNELS 3
+#define MAV_DATA_STREAM_POSITION 6
+#define MAV_DATA_STREAM_EXTRA1 10
+#define MAV_DATA_STREAM_EXTRA2 11
+#define  LAT  0
+#define  LON  1
+
+const char mav_mode_APM[] PROGMEM    = "APM "; //Unknown APM mode
+const char mav_mode_STAB[] PROGMEM   = "STAB"; //Stabilize: hold level position
+const char mav_mode_ACRO[] PROGMEM   = "ACRO"; //Acrobatic: rate control
+const char mav_mode_AUTO[] PROGMEM   = "AUTO"; //Auto: auto control
+const char mav_mode_LOIT[] PROGMEM   = "LOIT"; //Loiter: hold a single location
+const char mav_mode_RETL[] PROGMEM   = "RETL"; //Return to Launch: auto control
+const char mav_mode_CIRC[] PROGMEM   = "CIRC"; //Circle: auto control
+const char mav_mode_ATUN[] PROGMEM   = "ATUN"; //Auto Tune: autotune the vehicle's roll and pitch gains
+const char mav_mode_GUID[] PROGMEM   = "GUID"; //Guided: auto control
+#ifdef FIXEDWING // within MAVLINK
+const char mav_mode_MANU[] PROGMEM   = "MANU"; //Manual
+const char mav_mode_TRNG[] PROGMEM   = "TRNG"; //Training
+const char mav_mode_FBWA[] PROGMEM   = "FBWA"; //Fly-by-wire A
+const char mav_mode_FBWB[] PROGMEM   = "FBWB"; //Fly-by-wire B
+const char mav_mode_CRUI[] PROGMEM   = "CRUI"; //Cruise
+const char mav_mode_INIT[] PROGMEM   = "INIT"; //Init
+const PROGMEM char * const mav_mode_index[] = 
+{   
+ mav_mode_MANU, //0
+ mav_mode_CIRC,
+ mav_mode_STAB,
+ mav_mode_TRNG,
+ mav_mode_ACRO,
+ mav_mode_FBWA,
+ mav_mode_FBWB,
+ mav_mode_CRUI,
+ mav_mode_ATUN, 
+ mav_mode_APM , 
+ mav_mode_AUTO,
+ mav_mode_RETL,
+ mav_mode_LOIT,
+ mav_mode_APM , 
+ mav_mode_APM , 
+ mav_mode_GUID,
+ mav_mode_INIT, //16
+ mav_mode_APM , 
+};
+#else
+const char mav_mode_ALTH[] PROGMEM   = "ALTH"; //Altitude Hold: auto control
+const char mav_mode_POSI[] PROGMEM   = "POSI"; //Position: auto control
+const char mav_mode_LAND[] PROGMEM   = "LAND"; //Land:: auto control
+const char mav_mode_OFLO[] PROGMEM   = "OFLO"; //OF_Loiter: hold a single location using optical flow sensor
+const char mav_mode_DRIF[] PROGMEM   = "DRIF"; //Drift mode: 
+const char mav_mode_SPRT[] PROGMEM   = "SPRT"; //Sport: earth frame rate control
+const char mav_mode_FLIP[] PROGMEM   = "FLIP"; //Flip: flip the vehicle on the roll axis
+const char mav_mode_HYBR[] PROGMEM   = "HYBR"; //Hybrid: position hold with manual override
+const PROGMEM char * const mav_mode_index[] = 
+{   
+ mav_mode_STAB, //0
+ mav_mode_ACRO,
+ mav_mode_ALTH,
+ mav_mode_AUTO,
+ mav_mode_GUID,
+ mav_mode_LOIT,
+ mav_mode_RETL,
+ mav_mode_CIRC,
+ mav_mode_POSI,
+ mav_mode_LAND,
+ mav_mode_OFLO,
+ mav_mode_DRIF,
+ mav_mode_APM, 
+ mav_mode_SPRT,
+ mav_mode_FLIP,
+ mav_mode_ATUN,
+ mav_mode_HYBR, //16
+ mav_mode_APM , 
+};
+#endif //FIXEDWING
+
+// Vars
+struct __mw_mav {
+  uint8_t  message_cmd;
+  uint8_t  message_length;
+  uint8_t  message_sysid;
+  uint8_t  mode;
+  uint8_t  sequence;
+  uint8_t  message_component;
+  uint16_t serial_checksum;
+  uint16_t tx_checksum;
+  float    GPS_scaleLonDown;
+}mw_mav;
+
+int32_t  GPS_home[2];
+uint8_t  GPS_fix_HOME;
+int16_t  GPS_altitude_home;                            
+#endif //MAVLINK
+
+
+#ifdef PROTOCOL_LTM
+
+#define LIGHTTELEMETRY_START1 0x24 //$
+#define LIGHTTELEMETRY_START2 0x54 //T
+#define LIGHTTELEMETRY_GFRAME 0x47 //G GPS + Baro altitude data ( Lat, Lon, Speed, Alt, Sats, Sat fix)
+#define LIGHTTELEMETRY_AFRAME 0x41 //A Attitude data ( Roll,Pitch, Heading )
+#define LIGHTTELEMETRY_SFRAME 0x53 //S Sensors/Status data ( VBat, Consumed current, Rssi, Airspeed, Arm status, Failsafe status, Flight mode )
+#define LIGHTTELEMETRY_OFRAME 0x4F  //O OSD additionals data ( home pos, home alt, direction to home )
+#define LIGHTTELEMETRY_GFRAMELENGTH 18
+#define LIGHTTELEMETRY_AFRAMELENGTH 10
+#define LIGHTTELEMETRY_SFRAMELENGTH 11
+#define LIGHTTELEMETRY_OFRAMELENGTH 18
+#define  LAT  0
+#define  LON  1
+
+int32_t  GPS_home[2];
+uint8_t LTMserialBuffer[LIGHTTELEMETRY_GFRAMELENGTH - 4];
+
+
+const char ltm_mode_MANU[] PROGMEM   = "MANU"; //Manual
+const char ltm_mode_RATE[] PROGMEM   = "RATE"; //Rate
+const char ltm_mode_ACRO[] PROGMEM   = "ACRO"; //Acrobatic: rate control
+const char ltm_mode_STAB[] PROGMEM   = "STAB"; //Stabilize: hold level position
+const char ltm_mode_HOZN[] PROGMEM   = "HOZN"; //Horizon
+const char ltm_mode_HOLD[] PROGMEM   = "HOLD"; //Hold
+const char ltm_mode_HEAD[] PROGMEM   = "HEAD"; //Head
+const char ltm_mode_WAYP[] PROGMEM   = "WAYP"; //Waypoint
+const char ltm_mode_RTH[]  PROGMEM   = "RTH "; //Return to Launch: auto control
+const char ltm_mode_FOLL[] PROGMEM   = "FOLL"; //Follow me
+const char ltm_mode_CIRC[] PROGMEM   = "CIRC"; //Circle: auto control
+const char ltm_mode_FBWA[] PROGMEM   = "FBWA"; //Fly-by-wire A
+const char ltm_mode_FBWB[] PROGMEM   = "FBWB"; //Fly-by-wire B
+const char ltm_mode_CRUI[] PROGMEM   = "CRUI"; //Cruise
+const char ltm_mode_LAND[] PROGMEM   = "LAND"; //Land
+const char ltm_mode_LTM[]  PROGMEM   = "LTM "; //Unknown LTM mode
+
+const PROGMEM char * const ltm_mode_index[] = 
+{   
+ ltm_mode_MANU, //0
+ ltm_mode_RATE,
+ ltm_mode_STAB,
+ ltm_mode_HOZN,
+ ltm_mode_ACRO,
+ ltm_mode_STAB,
+ ltm_mode_STAB,
+ ltm_mode_STAB,
+ ltm_mode_HOLD, 
+ ltm_mode_HOLD, 
+ ltm_mode_WAYP,
+ ltm_mode_HEAD,
+ ltm_mode_CIRC,
+ ltm_mode_RTH , 
+ ltm_mode_FOLL, 
+ ltm_mode_LAND,
+ ltm_mode_FBWA,
+ ltm_mode_FBWB, 
+ ltm_mode_CRUI, 
+ ltm_mode_LTM , 
+};
+
+// Vars
+struct __mw_ltm {
+  uint8_t mode;
+  uint8_t LTMreceiverIndex;
+  uint8_t LTMcmd;
+  uint8_t LTMrcvChecksum;
+  uint8_t LTMreadIndex;
+  uint8_t LTMframelength;
+  uint16_t GPS_altitude_home;
+  uint16_t batUsedCapacity;  
+  float    GPS_scaleLonDown;  
+}mw_ltm;
+
+#endif // PROTOCOL_LTM
+
+#ifdef PROTOCOL_KISS
+
+const char KISS_mode_ACRO[] PROGMEM   = ""; //Acrobatic: rate control
+const char KISS_mode_STAB[] PROGMEM   = "STAB"; //Stabilize: hold level position
+const char KISS_mode_3D[]   PROGMEM   = "3D"; //Stabilize: hold level position
+
+const PROGMEM char * const KISS_mode_index[] = 
+{   
+ KISS_mode_ACRO,
+ KISS_mode_STAB, 
+ KISS_mode_3D, 
+};
+
+#define ESC_FILTER 10
+#define KISSFRAMEINIT 5
+#define KISSFRAMELENGTH 165 // max frame size
+uint8_t KISSserialBuffer[KISSFRAMELENGTH];
+
+// Vars
+struct __Kvar {
+  uint8_t mode;
+  uint8_t index;
+  uint8_t payloadlength;
+  uint8_t readIndex;
+  uint8_t framelength;
+  uint16_t cksumtmp;
+}
+Kvar;
+
+#endif // PROTOCOL_KISS
 

@@ -37,13 +37,13 @@ String boxnames[] = { // names for dynamic generation of config GUI
     "ARM;",
     "ANGLE;",
     "HORIZON;",
-    "AIR MODE;",
     "BARO;",
     "MAG;",
     "CAMSTAB;",
     "GPS HOME;",
     "GPS HOLD;",
-    "MISSION;",
+//    "MISSION;",
+    "AIR MODE;",
     "OSD SW;"   
   };
 String strBoxNames = join(boxnames,""); 
@@ -207,6 +207,7 @@ void SetConfigItem(int index, int value) {
     return;
 
   if(index == GetSetting("S_VOLTAGEMIN"))confItem[index].setValue(float(value)/10);//preserve decimal
+  else if(index == GetSetting("S_VIDVOLTAGEMIN"))confItem[index].setValue(float(value)/10);//preserve decimal
   else if(index == GetSetting("S_GPSTZ"))confItem[index].setValue(float(value)/10);//preserve decimal, maybe can go elsewhere - haydent
   else confItem[index].setValue(value);
 //  if (index == CONFIGITEMS-1)
@@ -338,18 +339,14 @@ public void DEFAULT(){
     loop();
     switch (Reset_result) {
       case JOptionPane.YES_OPTION:
-//        toggleMSP_Data = true;
-        for (int txTimes = 0; txTimes<3; txTimes++) {
+        for (int txTimes = 0; txTimes<1; txTimes++) {
           headSerialReply(MSP_OSD, 1);
           serialize8(OSD_DEFAULT);
           tailSerialReply();
           delay(100);
         }
-//        toggleMSP_Data = false;
-//        READinit();
+        delay(1000);     
         READconfigMSP_init();
-//        delay(2000);     
-//        ReadConfig=100;
         return;
       case JOptionPane.CANCEL_OPTION:
 //        SimControlToggle.setValue(1);
@@ -388,13 +385,16 @@ void SendCommand(int cmd){
         if(toggleModeItems[2].getValue()> 0) modebits |=1<<2;
         if(toggleModeItems[3].getValue()> 0) modebits |=1<<3;
         if(toggleModeItems[4].getValue()> 0) modebits |=1<<5;
-        if(toggleModeItems[5].getValue()> 0) modebits |=1<<8;
         if(toggleModeItems[6].getValue()> 0) modebits |=1<<10;
         if(toggleModeItems[7].getValue()> 0) modebits |=1<<11;
-        if(toggleModeItems[8].getValue()> 0) modebits |=1<<20;
+        if(toggleModeItems[8].getValue()> 0) modebits |=1<<28;
         if(toggleModeItems[9].getValue()> 0) modebits |=1<<19;
-//        if(toggleModeItems[8].getValue()> 0) modebits |=1<<16; //Also send LLIGHTS when OSD enabled - for testing
-//        if(toggleModeItems[5].getValue()> 0) modebits |=1<<12; //Also send PASS when CAMSTAB enabled - for testing
+
+        if(toggleModeItems[5].getValue()> 0) modebits |=1<<8;  //Send CAMSTAB
+//        if(toggleModeItems[5].getValue()> 0) modebits |=1<<16; //Also send LLIGHTS      when CAMSTAB enabled - for testing
+//        if(toggleModeItems[5].getValue()> 0) modebits |=1<<12; //Also send PASS         when CAMSTAB enabled - for testing
+//        if(toggleModeItems[5].getValue()> 0) modebits |=1<<20; //Also send MISSION MODE when CAMSTAB enabled - for testing
+//        if(toggleModeItems[5].getValue()> 0) modebits |=1<<29; //Also send ACROPLUS MODE when CAMSTAB enabled - for testing
         serialize32(modebits);
         serialize8(0);   // current setting
         tailSerialReply();
@@ -468,8 +468,8 @@ void SendCommand(int cmd){
       
       case MSP_BOXIDS:
         PortIsWriting = true;
-        headSerialReply(MSP_BOXIDS,23);
-        for (int i=0; i<23; i++) {
+        headSerialReply(MSP_BOXIDS,30);
+        for (int i=0; i<30; i++) {
         serialize8(i);
         }
         tailSerialReply();
@@ -560,7 +560,7 @@ void SendCommand(int cmd){
         serialize8(int(SGPS_FIX.arrayValue()[0]));
         serialize8(int(SGPS_numSat.value()));
         GPSstartlat=GPSstartlat+100;
-        GPSstartlon=GPSstartlon-100;
+        GPSstartlon=GPSstartlon+100;
         serialize32(GPSstartlat);
         serialize32(GPSstartlon);
         serialize16(int(SGPS_altitude.value()/100));
@@ -698,7 +698,7 @@ void headSerialReply(int requestMSP, int s) {
 //}
 
 void tailSerialReply() {
-  if (outChecksum > 0) serialize8(outChecksum);
+  serialize8(outChecksum);
 }
 
 public void DelayTimer(int ms){
@@ -824,6 +824,7 @@ public void evaluateCommand(byte cmd, int size) {
           int eeaddressOSDH=read8();
           eeaddressOSD=eeaddressOSDL+(eeaddressOSDH<<8);
           eeindextxt="EEW: "+eeaddressOSD;   
+// System.out.println("OSD req:"+ eeaddressOSD);
           eeindexmessage.setValue(eeindextxt);
 
           if (eeaddressOSD>=eeaddressGUI){ // update base address
@@ -987,8 +988,12 @@ void MWData_Com() {
   int c = 0;
   
   //System.out.println("MWData_Com");  
-    
-    while (g_serial.available()>0) {
+    int serialprocess=50; // max chars processed to help with PC's that processs serial slowly
+    if (g_serial.available()==0){
+      serialprocess=0;
+    }
+    while (serialprocess>0) {
+      serialprocess--;
 //    while (g_serial.available()>0 && (toggleMSP_Data == true)) {
     try{
       c = (g_serial.read());
@@ -1166,6 +1171,9 @@ void MWData_Com() {
 //    confItem[GetSetting("S_AMPMAXH")].setValue(int(confItem[GetSetting("S_AMPDIVIDERRATIO")].value())>>8);
     for(int i = 0; i < CONFIGITEMS; i++){
       if(i == GetSetting("S_VOLTAGEMIN")){
+        EElookuptable[i]=int(confItem[i].value()*10);
+      }
+      else if(i == GetSetting("S_VIDVOLTAGEMIN")){
         EElookuptable[i]=int(confItem[i].value()*10);
       }
       else if(i == GetSetting("S_GPSTZ")){

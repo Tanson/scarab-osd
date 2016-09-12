@@ -80,7 +80,7 @@ And to a lesser extent code from the following :-
 
 
 String MW_OSD_GUI_Version = "MWOSD R1.6 - NextGeneration";
-int MW_OSD_EEPROM_Version = 11;
+int MW_OSD_EEPROM_Version = 12;
 int CONFIGITEMS16 = 7;
 
 int  GPS_numSatPosition = 0;
@@ -95,7 +95,7 @@ int  MwHeadingGraphPosition = 8;
 int  MwAltitudePosition = 9;
 int  MwClimbRatePosition = 10;
 int  CurrentThrottlePosition = 11;
-int  flyTimePosition = 12;
+int  flyTimePosition = 12; //unused
 int  onTimePosition = 13;
 int  motorArmedPosition = 14;
 int  pitchAnglePosition = 15;
@@ -111,8 +111,8 @@ int  pMeterSumPosition = 24;
 int  horizonPosition = 25;
 int  SideBarPosition =26; 
 int  SideBarScrollPosition = 27;
-int  callSignPosition = 28;
-int  debugPosition = 29;
+int  SideBarHeight = 28;
+int  SideBarWidth = 29;
 int  gimbalPosition = 30;
 int  GPS_timePosition = 31;
 int  SportPosition = 32;
@@ -121,6 +121,10 @@ int  MapModePosition = 34;
 int  MapCenterPosition = 35;
 int  APstatusPosition = 36;
 int  wattPosition = 37;
+int  glidescopePosition = 38;
+int  callSignPosition = 39;
+int  debugPosition = 40;
+
 int GPSstartlat = 430948610;
 int GPSstartlon = -718897060;
 
@@ -184,7 +188,7 @@ ControlP5 SmallcontrolP5;
 ControlP5 ScontrolP5;
 ControlP5 FontGroupcontrolP5;
 ControlP5 GroupcontrolP5;
-Textlabel txtlblWhichcom,txtlblWhichbaud,txtmessage,mspmessage,eeindexmessage,analmessage; 
+Textlabel txtlblWhichcom,txtlblWhichbaud,txtmessage,mspmessage,eeindexmessage,processingmessage,analmessage; 
 Textlabel txtlblLayoutTxt,txtlblLayoutEnTxt, txtlblLayoutHudTxt; 
 Textlabel txtlblLayoutTxt2,txtlblLayoutEnTxt2, txtlblLayoutHudTxt2; 
 ListBox commListbox,baudListbox;
@@ -229,6 +233,10 @@ int WriteConfigMSPMillis=0;
 int FontMSPMillis=0;
 int rssical=99;
 int eedataOSDtemp = 0;
+int processingtxtval = 0;
+int oldseconds=0;
+int framerate=0;
+String frameratetxt="";
 
 // XML config editorvariables
 int hudeditposition=0;
@@ -257,7 +265,7 @@ int Simtype=0;
 int Donate=2;
 int DonateMessage=1;
 int StartupMessage=0;
-int FrameRate=30;
+int FrameRate=5;
 
 int init_com = 0;
 int commListMax = 0;
@@ -268,6 +276,7 @@ int[] debug = new int[4];
 String progresstxt="";
 String msptxt="";
 String eeindextxt="";
+String processingtxt="";
 String analtxt="";
 int analSENSORS=5;
 int xcolor=20;  
@@ -280,9 +289,10 @@ int ConfigVALUE = -1;
 // Box locations -------------------------------------------------------------------------
 int Col1Width = 180;        int Col2Width = 200;    int Col3Width = 165;
 
-int windowsX    = 1041+Col3Width+5;       int windowsY    =613; //578;        //995; //573;
-//int windowsX    = 1041;       int windowsY    =578;        //995; //573;
-//int windowsX    = 1200;       int windowsY    =800;        //995; //573;
+// Window Size -------------------------------------------------------------------------
+int windowsX    = 1041+Col3Width+5;
+int windowsY    =578;
+
 int xGraph      = 10;         int yGraph      = 35;
 int xObj        = 520;        int yObj        = 293; //900,450
 int xCompass    = 920;        int yCompass    = 341; //760,336
@@ -710,7 +720,7 @@ Button buttonIMPORT,buttonSAVE,buttonREAD,buttonRESET,buttonWRITE,buttonRESTART,
 Button buttonLUP, buttonLDOWN, buttonLLEFT, buttonLRIGHT, buttonLPOSUP, buttonLPOSDOWN;
 Button buttonLHUDUP,buttonLPOSHUDDOWN,buttonLPOSEN, buttonLSET, buttonLADD, buttonLSAVE, buttonLCANCEL;
 Button buttonLEW,buttonSetRSSIlow,buttonSetRSSIhigh,buttonSetHWCurrentSensor,buttonSetHWCurrentSensorCancel,buttonSetHWCurrentSensorSave;
-Button buttonGUIDELINK, buttonFAQLINK, buttonCALIBLINK, buttonSUPPORTLINK, buttonDONATELINK;
+Button buttonGUIDELINK, buttonFAQLINK, buttonCALIBLINK, buttonSUPPORTLINK, buttonDONATELINK, buttonMWOSD, buttonGITHUB;
 // Buttons------------------------------------------------------------------------------------------------------------------
 
 // Toggles------------------------------------------------------------------------------------------------------------------
@@ -880,6 +890,7 @@ DONATEimage  = loadImage("DON_def.png");
   txtmessage = controlP5.addTextlabel("txtmessage","",3,295); // textdebug
   mspmessage = controlP5.addTextlabel("mspmessage","",XHUD+735,155); // textdebug
   eeindexmessage = controlP5.addTextlabel("eeindexmessage","",XHUD+735,175); // eeindexdebug
+  processingmessage = controlP5.addTextlabel("processingmessage","",XHUD+735+70,155); // eeindexdebug
 
 
   analmessage = controlP5.addTextlabel("analmessage","",XHUD+735,255); //
@@ -1035,6 +1046,10 @@ buttonGPSTIMELINK = controlP5.addButton("GPSTIMELINK",1,200,10,125,16);
 buttonGPSTIMELINK.setCaptionLabel("GPS Requirements").setGroup(G_LINKS);
 buttonSPORTLINK = controlP5.addButton("SPORTLINK",1,200,30,125,16);
 buttonSPORTLINK.setCaptionLabel("FRSKY Requirements").setGroup(G_LINKS);
+buttonMWOSD = controlP5.addButton("MWOSDLINK",1,200,50,125,16);
+buttonMWOSD.setCaptionLabel("MWOSD website").setGroup(G_LINKS);
+buttonGITHUB = controlP5.addButton("GITHUBLINK",1,200,70,125,16);
+buttonGITHUB.setCaptionLabel("LATEST SOFTWARE").setGroup(G_LINKS);
 buttonDONATELINK = controlP5.addButton("DONATELINK",1,XLINKS+30,YLINKS+217, 80, 20).setVisible(false);
 //   image(DONATEimage,XLINKS+20,YLINKS+207, 100, 40); 
 
@@ -1236,9 +1251,40 @@ public void draw() {
 //  debug[2]=OSD_S_HUDSW1;
 //  debug[3]=OSD_S_HUDSW2;
 // Initial setup
+  int seconds = second();
   time=millis();
   progresstxt="";
+  switch(processingtxtval) {
+    case 0:
+      processingtxt="/";
+      break;
+    case 1:
+      processingtxt="-";
+      break;
+    case 2:
+      processingtxt="\\";
+      break;
+    case 3:
+      processingtxt="|";
+      break;
+  }
+  processingtxtval++;
 
+  if (seconds!=oldseconds){
+    frameratetxt=str(framerate);
+    framerate=0;
+    oldseconds=seconds;
+  }
+  framerate++;
+  processingtxt="Framerate: "+ frameratetxt +" "+ processingtxt;
+
+  if (processingtxtval>3) processingtxtval=0;
+  if (PApplet.parseInt(DEBUGGUI.getValue())!=1){
+    processingtxt="";
+  }
+  
+  
+  
   if (commListbox.isOpen())
     baudListbox.close();
   else
@@ -1304,6 +1350,7 @@ public void draw() {
     txtmessage.setValue(progresstxt);
     mspmessage.setValue(msptxt);
     eeindexmessage.setValue(eeindextxt);
+    processingmessage.setValue(processingtxt);
     
 // txtlblconfItem[0].setValue(""); huh?
 
@@ -1320,7 +1367,7 @@ public void draw() {
   txtlblLayoutHudTxt.setValue(" : "+hudid);
   LEW.setLabel("Layout Editor for profile: "+hudid+" - "+CONFIGHUDNAME[hudid]);
   if (CONFIGHUDEN[hudid][hudeditposition]>0)
-    txtlblLayoutEnTxt.setValue(" : Enabled");
+    txtlblLayoutEnTxt.setValue(" : Enabled "+(CONFIGHUD[hudid][hudeditposition]&0x01FF));
   else
     txtlblLayoutEnTxt.setValue(" : Disabled");
 
@@ -1358,8 +1405,10 @@ public void draw() {
     MakePorts();
     msptxt="";
     eeindextxt="";
+//    processingtxt="";
     analmessage.setValue("");
     eeindexmessage.setValue("");
+    processingmessage.setValue("");
     for (int i=0; i<analSENSORS; i++) {
       txtlblanal[i].setValue("");
     }
@@ -1450,7 +1499,6 @@ public void draw() {
 
   image(GUIBackground,0, 0, windowsX, windowsY); 
 
-  int seconds = second();
   if (((seconds&0x1F)!= 0)&&(Donate>0)){
    image(DONATEimage,XLINKS+20,YLINKS+207, 100, 40);  
   }  
@@ -1530,12 +1578,14 @@ public void draw() {
   ShowDirection();
  }
  
+ 
   ShowMapMode();
     
   MatchConfigs();
   MakePorts();
   
   ShowSPort();
+ 
   
   if ((ClosePort ==true)&& (PortWrite == false)){ //&& (init_com==1)
     ClosePort();
@@ -1748,6 +1798,8 @@ public void controlEvent(ControlEvent theEvent) {
 
 
 public void mapchar(int address, int screenAddress){
+  if (screenAddress>480)
+    return;
   int placeX = (screenAddress % 30) * 12;
   int placeY = (screenAddress / 30) * 18;
 
@@ -1802,6 +1854,10 @@ public void bLUP() {
   int ii = CONFIGHUD[i][hudeditposition]&0x1FF;
   ii-=30;
   ii=constrain(ii,0,419);
+  if(hudeditposition==SideBarHeight)
+    ii=constrain(ii,1,7);
+  if(hudeditposition==SideBarWidth)
+    ii=constrain(ii,1,14);
   println(ii);
   CONFIGHUD[i][hudeditposition]&=0xFE00;
   CONFIGHUD[i][hudeditposition]|=ii;
@@ -1818,10 +1874,13 @@ public void bLDOWN() {
   int ii = CONFIGHUD[i][hudeditposition]&0x1FF;
   ii+=30;
   ii=constrain(ii,0,419);
+  if(hudeditposition==SideBarHeight)
+    ii=constrain(ii,1,7);
+  if(hudeditposition==SideBarWidth)
+    ii=constrain(ii,1,14);
   println(ii);
   CONFIGHUD[i][hudeditposition]&=0xFE00;
   CONFIGHUD[i][hudeditposition]|=ii;
-//  CONFIGHUD[i][hudeditposition]+=30;
 }
 
 public void bLLEFT() {
@@ -1835,6 +1894,10 @@ public void bLLEFT() {
   int ii = CONFIGHUD[i][hudeditposition]&0x1FF;
   ii-=1;
   ii=constrain(ii,0,419);
+  if(hudeditposition==SideBarHeight)
+    ii=constrain(ii,1,7);
+  if(hudeditposition==SideBarWidth)
+    ii=constrain(ii,1,14);
   println(ii);
   CONFIGHUD[i][hudeditposition]&=0xFE00;
   CONFIGHUD[i][hudeditposition]|=ii;
@@ -1851,6 +1914,10 @@ public void bLRIGHT() {
   int ii = CONFIGHUD[i][hudeditposition]&0x1FF;
   ii+=1;
   ii=constrain(ii,0,419);
+  if(hudeditposition==SideBarHeight)
+    ii=constrain(ii,1,7);
+  if(hudeditposition==SideBarWidth)
+    ii=constrain(ii,1,14);
   println(ii);
   CONFIGHUD[i][hudeditposition]&=0xFE00;
   CONFIGHUD[i][hudeditposition]|=ii;
@@ -2207,10 +2274,10 @@ public void LoadConfig(){
     BaudRate = 115200;
     Title = MW_OSD_GUI_Version;
     Passthroughcomm = 0;
-    AutoSimulator = 0;
+    AutoSimulator = 1;
     AutoDebugGUI = 1;
     Simtype=1;
-    FrameRate = 15;
+    FrameRate = 7;
     StartupMessage = 0;
     Donate = 2;
     updateConfig();
@@ -2353,8 +2420,11 @@ public void GPSTIMELINK(){
 public void SPORTLINK(){
  link("https://github.com/ShikOfTheRa/scarab-osd/blob/master/OTHER/DOCUMENTATION/Frsky_SPort.md"); 
 }
-public void CODELINK(){
- link("https://www.mwosd.com/"); 
+public void MWOSDLINK(){
+ link("http://www.mwosd.com"); 
+}
+public void GITHUBLINK(){
+ link("https://github.com/ShikOfTheRa/scarab-osd/releases"); 
 }
 public void FAQLINK(){
  link("https://github.com/ShikOfTheRa/scarab-osd/blob/master/OTHER/DOCUMENTATION/FAQ.md"); 
@@ -2431,6 +2501,7 @@ public void initxml(){
 
 
 public void xmlsavelayout(){
+  XML[] xmlhuddescription = xml.getChildren("DESCRIPTION");
   XML[] allhudoptions = xml.getChildren("LAYOUT");
   int i=0;
 
@@ -2438,6 +2509,9 @@ public void xmlsavelayout(){
     for (int hudindex = 0; hudindex < hudoptions; hudindex++) {
       allhudoptions[i].setInt("enabled",CONFIGHUDEN[hud][hudindex]);
       allhudoptions[i].setInt("value",CONFIGHUD[hud][hudindex]&0x3FF);
+      String text = xmlhuddescription[hudindex].getString("desc");
+//      String text=str(i);
+      allhudoptions[i].setString("desc",text);
       i++;  
     }    
   }
@@ -3091,7 +3165,7 @@ public void SetupGroups(){
                 .activateEvent(true)
                 .setBackgroundColor(color(30,255))
                 .setBackgroundHeight(90)
-                .setLabel("   OSD CONTROLS")
+                .setLabel("       SETTINGS")
                 .disableCollapse();
                 //.close() 
                ; 
@@ -3605,13 +3679,13 @@ String boxnames[] = { // names for dynamic generation of config GUI
     "ARM;",
     "ANGLE;",
     "HORIZON;",
-    "AIR MODE;",
     "BARO;",
     "MAG;",
     "CAMSTAB;",
     "GPS HOME;",
     "GPS HOLD;",
-    "MISSION;",
+//    "MISSION;",
+    "AIR MODE;",
     "OSD SW;"   
   };
 String strBoxNames = join(boxnames,""); 
@@ -3906,18 +3980,14 @@ public void DEFAULT(){
     loop();
     switch (Reset_result) {
       case JOptionPane.YES_OPTION:
-//        toggleMSP_Data = true;
-        for (int txTimes = 0; txTimes<3; txTimes++) {
+        for (int txTimes = 0; txTimes<1; txTimes++) {
           headSerialReply(MSP_OSD, 1);
           serialize8(OSD_DEFAULT);
           tailSerialReply();
           delay(100);
         }
-//        toggleMSP_Data = false;
-//        READinit();
+        delay(1000);     
         READconfigMSP_init();
-//        delay(2000);     
-//        ReadConfig=100;
         return;
       case JOptionPane.CANCEL_OPTION:
 //        SimControlToggle.setValue(1);
@@ -3956,13 +4026,16 @@ public void SendCommand(int cmd){
         if(toggleModeItems[2].getValue()> 0) modebits |=1<<2;
         if(toggleModeItems[3].getValue()> 0) modebits |=1<<3;
         if(toggleModeItems[4].getValue()> 0) modebits |=1<<5;
-        if(toggleModeItems[5].getValue()> 0) modebits |=1<<8;
         if(toggleModeItems[6].getValue()> 0) modebits |=1<<10;
         if(toggleModeItems[7].getValue()> 0) modebits |=1<<11;
-        if(toggleModeItems[8].getValue()> 0) modebits |=1<<20;
+        if(toggleModeItems[8].getValue()> 0) modebits |=1<<28;
         if(toggleModeItems[9].getValue()> 0) modebits |=1<<19;
-//        if(toggleModeItems[8].getValue()> 0) modebits |=1<<16; //Also send LLIGHTS when OSD enabled - for testing
-//        if(toggleModeItems[5].getValue()> 0) modebits |=1<<12; //Also send PASS when CAMSTAB enabled - for testing
+
+        if(toggleModeItems[5].getValue()> 0) modebits |=1<<8;  //Send CAMSTAB
+//        if(toggleModeItems[5].getValue()> 0) modebits |=1<<16; //Also send LLIGHTS      when CAMSTAB enabled - for testing
+//        if(toggleModeItems[5].getValue()> 0) modebits |=1<<12; //Also send PASS         when CAMSTAB enabled - for testing
+//        if(toggleModeItems[5].getValue()> 0) modebits |=1<<20; //Also send MISSION MODE when CAMSTAB enabled - for testing
+//        if(toggleModeItems[5].getValue()> 0) modebits |=1<<29; //Also send ACROPLUS MODE when CAMSTAB enabled - for testing
         serialize32(modebits);
         serialize8(0);   // current setting
         tailSerialReply();
@@ -4036,8 +4109,8 @@ public void SendCommand(int cmd){
       
       case MSP_BOXIDS:
         PortIsWriting = true;
-        headSerialReply(MSP_BOXIDS,23);
-        for (int i=0; i<23; i++) {
+        headSerialReply(MSP_BOXIDS,30);
+        for (int i=0; i<30; i++) {
         serialize8(i);
         }
         tailSerialReply();
@@ -4266,7 +4339,7 @@ public void headSerialReply(int requestMSP, int s) {
 //}
 
 public void tailSerialReply() {
-  if (outChecksum > 0) serialize8(outChecksum);
+  serialize8(outChecksum);
 }
 
 public void DelayTimer(int ms){
@@ -4392,6 +4465,7 @@ public void evaluateCommand(byte cmd, int size) {
           int eeaddressOSDH=read8();
           eeaddressOSD=eeaddressOSDL+(eeaddressOSDH<<8);
           eeindextxt="EEW: "+eeaddressOSD;   
+// System.out.println("OSD req:"+ eeaddressOSD);
           eeindexmessage.setValue(eeindextxt);
 
           if (eeaddressOSD>=eeaddressGUI){ // update base address
@@ -4807,6 +4881,7 @@ int mode_llights = 0;
 int mode_camstab = 0;
 int mode_osd_switch = 0;
 int mode_air = 0;
+int mode_acroplus = 0;
 
 int SendSim = 0;
 
@@ -4987,7 +5062,7 @@ LinksSetup() ;
                 .activateEvent(true)
                 .disableCollapse()
                 .setBackgroundColor(color(30,255))
-                .setBackgroundHeight((boxnames.length*17) + 9)
+                .setBackgroundHeight((boxnames.length*16)+1)
                 .setLabel("Modes")
                 .setGroup(SG)
                 .disableCollapse() 
@@ -5403,8 +5478,8 @@ public void ShowVideoVolts(float voltage){
 public void ShowFlyTime(String FMinutes_Seconds){
 
   if (PApplet.parseInt(confItem[GetSetting("S_TIMER")].value()) > 0){
-  mapchar(0x9c, SimPosn[flyTimePosition]);
-  makeText(FMinutes_Seconds, SimPosn[flyTimePosition]+1);
+  mapchar(0x9c, SimPosn[onTimePosition]);
+  makeText(FMinutes_Seconds, SimPosn[onTimePosition]+1);
 }}
 
 public void ShowOnTime(String Minutes_Seconds){
@@ -5548,8 +5623,8 @@ public void ShowVario(){
 public void ShowRSSI(){
   String output = str(PApplet.parseInt(s_MRSSI.getValue()));
   if(confItem[GetSetting("S_DISPLAYRSSI")].value() > 0) {
-  mapchar(0xba, SimPosn[rssiPosition]);
-  makeText(output + "%", SimPosn[rssiPosition]+1);
+  mapchar(0xba, SimPosn[rssiPosition]-1);
+  makeText(output + "%", SimPosn[rssiPosition]);
 }}
 
 public void ShowAPstatus(){
@@ -5688,7 +5763,7 @@ public void displayHeading()
 
 
 public void SimulateTimer(){
-  if (SimPosn[flyTimePosition]==0x3FF){
+  if (SimPosn[onTimePosition]==0x3FF){
      return;
   }
 
@@ -5802,6 +5877,10 @@ public void displayMode()
       mapchar(0xb6,SimPosn[ModePosition]+1);
       mapchar(0x30,SimPosn[ModePosition]+2);
     }
+    else if((SimModebits&mode_air) >0){
+      mapchar(0xea,SimPosn[ModePosition]+30);
+      mapchar(0xeb,SimPosn[ModePosition]+31);
+    }
     else if((SimModebits&mode_stable) >0){
       mapchar(0xac,SimPosn[ModePosition]);
       mapchar(0xad,SimPosn[ModePosition]+1);
@@ -5810,16 +5889,15 @@ public void displayMode()
       mapchar(0xc4,SimPosn[ModePosition]);
       mapchar(0xc5,SimPosn[ModePosition]+1);
     }
+    else if((SimModebits&mode_acroplus) >0){
+      mapchar(0xae,SimPosn[ModePosition]);
+      mapchar(0x89,SimPosn[ModePosition]+1);
+    }
     else{
       mapchar(0xae,SimPosn[ModePosition]);
       mapchar(0xaf,SimPosn[ModePosition]+1);
     }
-    
-    if((SimModebits&mode_air) >0){
-      mapchar(0xea,SimPosn[ModePosition]+2);
-      mapchar(0xeb,SimPosn[ModePosition]+3);
-    }
-  }
+   }
 
 }
 }
@@ -5855,11 +5933,11 @@ if (SimPosn[horizonPosition]<0x3FF){
     Y += pitchAngle / 8;
     Y += 41;
     if(Y >= 0 && Y <= 81) {
-      int pos = SimPosn[horizonPosition] - 2*LINE + LINE*(Y/9) + 3 - 2*LINE + X;
+      int pos = SimPosn[horizonPosition] - 2*LINE + LINE*(Y/9) -4 - 2*LINE + X;
       if(X < 3 || X >5 || (Y/9) != 4 || confItem[GetSetting("S_DISPLAY_HORIZON_BR")].value() == 0)
       	mapchar(0x80+(Y%9), pos);
       if(Y>=9 && (Y%9) == 0)
-        mapchar(0x89, pos-30);
+        mapchar(0x20, pos-30);
     }
   }
   if(confItem[GetSetting("S_HORIZON_ELEVATION")].value() > 0) {
@@ -5869,56 +5947,61 @@ if (SimPosn[horizonPosition]<0x3FF){
     Y += pitchAngle / 8;
     Y += 31;
     if(Y >= 0 && Y <= 81) {
-      int pos = SimPosn[horizonPosition] - 2*LINE + LINE*(Y/9) + 3 - 2*LINE + X;
-//      int pos = 30*(2+Y/9) + 10 + X;
+      int pos = SimPosn[horizonPosition] - 2*LINE + LINE*(Y/9) -4 - 2*LINE + X;
       if(X < 3 || X >5 || (Y/9) != 4 || confItem[GetSetting("S_DISPLAY_HORIZON_BR")].value() == 0)
         mapchar(0x80+(Y%9), pos);
       if(Y>=9 && (Y%9) == 0)
-        mapchar(0x89, pos-30);
+        mapchar(0x20, pos-30);
     }
-    Y += 20;
-    if(Y >= 0 && Y <= 81) {
-      int pos = SimPosn[horizonPosition] - 2*LINE + LINE*(Y/9) + 3 - 2*LINE + X;
-//      int pos = 30*(2+Y/9) + 10 + X;
+    Y+=20;
+     if(Y >= 0 && Y <= 81) {
+      int pos = SimPosn[horizonPosition] - 2*LINE + LINE*(Y/9) -4 - 2*LINE + X;
       if(X < 3 || X >5 || (Y/9) != 4 || confItem[GetSetting("S_DISPLAY_HORIZON_BR")].value() == 0)
         mapchar(0x80+(Y%9), pos);
       if(Y>=9 && (Y%9) == 0)
-        mapchar(0x89, pos-30);
+        mapchar(0x20, pos-30);
     }
+
   }}
 
 
   if(confItem[GetSetting("S_DISPLAY_HORIZON_BR")].value() > 0) {
     //Draw center screen
-    mapchar(0x7e, 224-30);
-    mapchar(0x26, 224-30-1);
-    mapchar(0xbc, 224-30+1);
+    mapchar(0x7e, SimPosn[horizonPosition]);
+    mapchar(0x26, SimPosn[horizonPosition]-1);
+    mapchar(0xbc, SimPosn[horizonPosition]+1);
   }
   }
   
   if (SimPosn[SideBarPosition]<0x3FF){
     if(confItem[GetSetting("S_WITHDECORATION")].value() > 0) {
-      int centerpos = SimPosn[horizonPosition]+7;
-      for(int X=-2; X<=2; X++) {
-        mapchar(0x12,centerpos+7+(X*LINE));
-        mapchar(0x12,centerpos-7+(X*LINE));
+      int centerpos = SimPosn[horizonPosition];
+      int hudwidth=  SimPosn[SideBarWidth]&0x0F ;
+      int hudheight= SimPosn[SideBarHeight]&0x0F;
+      for(int X=-hudheight; X<=hudheight; X++) {
+        mapchar(0x12,centerpos+hudwidth+(X*LINE));
+        mapchar(0x12,centerpos-hudwidth+(X*LINE));
       }
-      mapchar(0x02, centerpos+6);
-      mapchar(0x03, centerpos-6);
+//      mapchar(0x02, centerpos+hudwidth);
+//      mapchar(0x03, centerpos-hudwidth);
     }
   }
   
 }
 
 public void ShowSideBarArrows(){
-  int centerpos = SimPosn[horizonPosition]+7;
+  int centerpos = SimPosn[horizonPosition];
   if (SimPosn[horizonPosition]==0x3FF)
     return;
   if (SimPosn[SideBarScrollPosition]==0x3FF)
     return;
   if(confItem[GetSetting("S_SIDEBARTOPS")].value() > 0) {
-    mapchar(0xCf,centerpos+7+(3*LINE));
-    mapchar(0xCf,centerpos-7+(3*LINE));
+    int hudwidth=  SimPosn[SideBarWidth] ;
+    int hudheight= SimPosn[SideBarHeight];
+    mapchar(0xCf,centerpos+hudwidth+(hudheight*LINE));
+    mapchar(0xCf,centerpos-hudwidth+(hudheight*LINE));
+    mapchar(0xC9,centerpos+hudwidth-(hudheight*LINE));
+    mapchar(0xC9,centerpos-hudwidth-(hudheight*LINE));
   }
 }
 
@@ -5967,6 +6050,7 @@ public void GetModes(){
   mode_stable = 0;
   mode_horizon = 0;
   mode_air = 0;
+  mode_acroplus = 0;
   mode_baro = 0;
   mode_mag = 0;
   mode_gpshome = 0;
@@ -5985,9 +6069,11 @@ public void GetModes(){
     if (boxnames[c] == "CAMSTAB;") mode_camstab |= bit;
     if (boxnames[c] == "GPS HOME;") mode_gpshome |= bit;
     if (boxnames[c] == "GPS HOLD;") mode_gpshold |= bit;
-    if (boxnames[c] == "OSD SW;") mode_osd_switch |= bit;
     if (boxnames[c] == "MISSION;") mode_gpsmission |= bit;
     if (boxnames[c] == "AIR MODE;") mode_air |= bit;
+    if (boxnames[c] == "OSD SW;") mode_osd_switch |= bit;
+
+//    if (boxnames[c] == "CAMSTAB;") mode_acroplus |= bit;
    
     bit <<= 1L;
   }

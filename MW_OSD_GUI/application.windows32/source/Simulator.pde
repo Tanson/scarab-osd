@@ -17,6 +17,8 @@ int mode_gpsland = 0;
 int mode_llights = 0;
 int mode_camstab = 0;
 int mode_osd_switch = 0;
+int mode_air = 0;
+int mode_acroplus = 0;
 
 int SendSim = 0;
 
@@ -197,7 +199,7 @@ LinksSetup() ;
                 .activateEvent(true)
                 .disableCollapse()
                 .setBackgroundColor(color(30,255))
-                .setBackgroundHeight((boxnames.length*17) + 9)
+                .setBackgroundHeight((boxnames.length*16)+1)
                 .setLabel("Modes")
                 .setGroup(SG)
                 .disableCollapse() 
@@ -613,8 +615,8 @@ void ShowVideoVolts(float voltage){
 void ShowFlyTime(String FMinutes_Seconds){
 
   if (int(confItem[GetSetting("S_TIMER")].value()) > 0){
-  mapchar(0x9c, SimPosn[flyTimePosition]);
-  makeText(FMinutes_Seconds, SimPosn[flyTimePosition]+1);
+  mapchar(0x9c, SimPosn[onTimePosition]);
+  makeText(FMinutes_Seconds, SimPosn[onTimePosition]+1);
 }}
 
 void ShowOnTime(String Minutes_Seconds){
@@ -758,8 +760,8 @@ void ShowVario(){
 void ShowRSSI(){
   String output = str(int(s_MRSSI.getValue()));
   if(confItem[GetSetting("S_DISPLAYRSSI")].value() > 0) {
-  mapchar(0xba, SimPosn[rssiPosition]);
-  makeText(output + "%", SimPosn[rssiPosition]+1);
+  mapchar(0xba, SimPosn[rssiPosition]-1);
+  makeText(output + "%", SimPosn[rssiPosition]);
 }}
 
 void ShowAPstatus(){
@@ -898,7 +900,7 @@ void displayHeading()
 
 
 void SimulateTimer(){
-  if (SimPosn[flyTimePosition]==0x3FF){
+  if (SimPosn[onTimePosition]==0x3FF){
      return;
   }
 
@@ -973,7 +975,7 @@ void displayMode()
       mapchar(0xa0,SimPosn[sensorPosition]);
 
     if((SimModebits&mode_horizon) >0)
-      mapchar(0xa0,SimPosn[sensorPosition]);
+      mapchar(0xa0,SimPosn[sensorPosition]); 
 
     if((SimModebits&mode_baro) >0)
       mapchar(0xa2,SimPosn[sensorPosition]+1);
@@ -1012,6 +1014,10 @@ void displayMode()
       mapchar(0xb6,SimPosn[ModePosition]+1);
       mapchar(0x30,SimPosn[ModePosition]+2);
     }
+    else if((SimModebits&mode_air) >0){
+      mapchar(0xea,SimPosn[ModePosition]+30);
+      mapchar(0xeb,SimPosn[ModePosition]+31);
+    }
     else if((SimModebits&mode_stable) >0){
       mapchar(0xac,SimPosn[ModePosition]);
       mapchar(0xad,SimPosn[ModePosition]+1);
@@ -1020,11 +1026,15 @@ void displayMode()
       mapchar(0xc4,SimPosn[ModePosition]);
       mapchar(0xc5,SimPosn[ModePosition]+1);
     }
+    else if((SimModebits&mode_acroplus) >0){
+      mapchar(0xae,SimPosn[ModePosition]);
+      mapchar(0x89,SimPosn[ModePosition]+1);
+    }
     else{
       mapchar(0xae,SimPosn[ModePosition]);
       mapchar(0xaf,SimPosn[ModePosition]+1);
     }
-  }
+   }
 
 }
 }
@@ -1060,11 +1070,11 @@ if (SimPosn[horizonPosition]<0x3FF){
     Y += pitchAngle / 8;
     Y += 41;
     if(Y >= 0 && Y <= 81) {
-      int pos = SimPosn[horizonPosition] - 2*LINE + LINE*(Y/9) + 3 - 2*LINE + X;
+      int pos = SimPosn[horizonPosition] - 2*LINE + LINE*(Y/9) -4 - 2*LINE + X;
       if(X < 3 || X >5 || (Y/9) != 4 || confItem[GetSetting("S_DISPLAY_HORIZON_BR")].value() == 0)
       	mapchar(0x80+(Y%9), pos);
       if(Y>=9 && (Y%9) == 0)
-        mapchar(0x89, pos-30);
+        mapchar(0x20, pos-30);
     }
   }
   if(confItem[GetSetting("S_HORIZON_ELEVATION")].value() > 0) {
@@ -1074,56 +1084,61 @@ if (SimPosn[horizonPosition]<0x3FF){
     Y += pitchAngle / 8;
     Y += 31;
     if(Y >= 0 && Y <= 81) {
-      int pos = SimPosn[horizonPosition] - 2*LINE + LINE*(Y/9) + 3 - 2*LINE + X;
-//      int pos = 30*(2+Y/9) + 10 + X;
+      int pos = SimPosn[horizonPosition] - 2*LINE + LINE*(Y/9) -4 - 2*LINE + X;
       if(X < 3 || X >5 || (Y/9) != 4 || confItem[GetSetting("S_DISPLAY_HORIZON_BR")].value() == 0)
         mapchar(0x80+(Y%9), pos);
       if(Y>=9 && (Y%9) == 0)
-        mapchar(0x89, pos-30);
+        mapchar(0x20, pos-30);
     }
-    Y += 20;
-    if(Y >= 0 && Y <= 81) {
-      int pos = SimPosn[horizonPosition] - 2*LINE + LINE*(Y/9) + 3 - 2*LINE + X;
-//      int pos = 30*(2+Y/9) + 10 + X;
+    Y+=20;
+     if(Y >= 0 && Y <= 81) {
+      int pos = SimPosn[horizonPosition] - 2*LINE + LINE*(Y/9) -4 - 2*LINE + X;
       if(X < 3 || X >5 || (Y/9) != 4 || confItem[GetSetting("S_DISPLAY_HORIZON_BR")].value() == 0)
         mapchar(0x80+(Y%9), pos);
       if(Y>=9 && (Y%9) == 0)
-        mapchar(0x89, pos-30);
+        mapchar(0x20, pos-30);
     }
+
   }}
 
 
   if(confItem[GetSetting("S_DISPLAY_HORIZON_BR")].value() > 0) {
     //Draw center screen
-    mapchar(0x7e, 224-30);
-    mapchar(0x26, 224-30-1);
-    mapchar(0xbc, 224-30+1);
+    mapchar(0x7e, SimPosn[horizonPosition]);
+    mapchar(0x26, SimPosn[horizonPosition]-1);
+    mapchar(0xbc, SimPosn[horizonPosition]+1);
   }
   }
   
   if (SimPosn[SideBarPosition]<0x3FF){
     if(confItem[GetSetting("S_WITHDECORATION")].value() > 0) {
-      int centerpos = SimPosn[horizonPosition]+7;
-      for(int X=-2; X<=2; X++) {
-        mapchar(0x12,centerpos+7+(X*LINE));
-        mapchar(0x12,centerpos-7+(X*LINE));
+      int centerpos = SimPosn[horizonPosition];
+      int hudwidth=  SimPosn[SideBarWidth]&0x0F ;
+      int hudheight= SimPosn[SideBarHeight]&0x0F;
+      for(int X=-hudheight; X<=hudheight; X++) {
+        mapchar(0x12,centerpos+hudwidth+(X*LINE));
+        mapchar(0x12,centerpos-hudwidth+(X*LINE));
       }
-      mapchar(0x02, centerpos+6);
-      mapchar(0x03, centerpos-6);
+//      mapchar(0x02, centerpos+hudwidth);
+//      mapchar(0x03, centerpos-hudwidth);
     }
   }
   
 }
 
 void ShowSideBarArrows(){
-  int centerpos = SimPosn[horizonPosition]+7;
+  int centerpos = SimPosn[horizonPosition];
   if (SimPosn[horizonPosition]==0x3FF)
     return;
   if (SimPosn[SideBarScrollPosition]==0x3FF)
     return;
   if(confItem[GetSetting("S_SIDEBARTOPS")].value() > 0) {
-    mapchar(0xCf,centerpos+7+(3*LINE));
-    mapchar(0xCf,centerpos-7+(3*LINE));
+    int hudwidth=  SimPosn[SideBarWidth] ;
+    int hudheight= SimPosn[SideBarHeight];
+    mapchar(0xCf,centerpos+hudwidth+(hudheight*LINE));
+    mapchar(0xCf,centerpos-hudwidth+(hudheight*LINE));
+    mapchar(0xC9,centerpos+hudwidth-(hudheight*LINE));
+    mapchar(0xC9,centerpos-hudwidth-(hudheight*LINE));
   }
 }
 
@@ -1171,6 +1186,8 @@ void GetModes(){
   mode_armed = 0;
   mode_stable = 0;
   mode_horizon = 0;
+  mode_air = 0;
+  mode_acroplus = 0;
   mode_baro = 0;
   mode_mag = 0;
   mode_gpshome = 0;
@@ -1189,8 +1206,11 @@ void GetModes(){
     if (boxnames[c] == "CAMSTAB;") mode_camstab |= bit;
     if (boxnames[c] == "GPS HOME;") mode_gpshome |= bit;
     if (boxnames[c] == "GPS HOLD;") mode_gpshold |= bit;
-    if (boxnames[c] == "OSD SW;") mode_osd_switch |= bit;
     if (boxnames[c] == "MISSION;") mode_gpsmission |= bit;
+    if (boxnames[c] == "AIR MODE;") mode_air |= bit;
+    if (boxnames[c] == "OSD SW;") mode_osd_switch |= bit;
+
+//    if (boxnames[c] == "CAMSTAB;") mode_acroplus |= bit;
    
     bit <<= 1L;
   }

@@ -18,6 +18,7 @@ int mode_llights = 0;
 int mode_camstab = 0;
 int mode_osd_switch = 0;
 int mode_air = 0;
+int mode_acroplus = 0;
 
 int SendSim = 0;
 
@@ -31,7 +32,7 @@ CheckBox checkboxSimItem[] = new CheckBox[SIMITEMS] ;
 CheckBox ShowSimBackground, UnlockControls, SGPS_FIX,SFRSKY;
 //Toggles
 Toggle toggleModeItems[] = new Toggle[boxnames.length] ;
-Toggle SimControlToggle,DEBUGGUI;
+Toggle SimControlToggle,SimDisplayToggle,DEBUGGUI;
 // Toggle HudOptionEnabled;
 
 // Slider2d-
@@ -40,7 +41,7 @@ Slider2D Pitch_Roll, Throttle_Yaw,MW_Pitch_Roll;
 Slider s_Altitude,s_Vario,s_VBat,s_MRSSI;
 
 Textlabel txtlblModeItems[] = new Textlabel[boxnames.length] ;
-Textlabel SimControlText,DEBUGGUItext;
+Textlabel SimControlText,SimDisplayText,DEBUGGUItext;
 
 // Knobs----
 Knob HeadingKnob,SGPSHeadHome;
@@ -198,7 +199,7 @@ LinksSetup() ;
                 .activateEvent(true)
                 .disableCollapse()
                 .setBackgroundColor(color(30,255))
-                .setBackgroundHeight((boxnames.length*17) + 9)
+                .setBackgroundHeight((boxnames.length*16)+1)
                 .setLabel("Modes")
                 .setGroup(SG)
                 .disableCollapse() 
@@ -283,6 +284,16 @@ SGControlBox = ScontrolP5.addGroup("SGControlBox")
                ;   
 
 
+SimDisplayToggle = (controlP5.Toggle) hideLabel(controlP5.addToggle("DisplaySim"));
+SimDisplayToggle.setPosition(5,17);
+SimDisplayToggle.setSize(35,10);
+SimDisplayToggle.setMode(ControlP5.SWITCH);
+SimDisplayToggle.setGroup(SGControlBox);
+SimDisplayToggle.setValue(0);
+//SimDisplayText = (controlP5.Toggle) hideLabel(controlP5.addTextlabel("SimControlText","Simulate on OSD",62,3));
+SimDisplayText = controlP5.addTextlabel("SimDisplayText","Display Simulator",45,17);
+SimDisplayText.setGroup(SGControlBox);
+
 
 SimControlToggle = (controlP5.Toggle) hideLabel(controlP5.addToggle("SendSim"));
 SimControlToggle.setPosition(5,5);
@@ -290,9 +301,8 @@ SimControlToggle.setSize(35,10);
 SimControlToggle.setMode(ControlP5.SWITCH);
 SimControlToggle.setGroup(SGControlBox);
 SimControlToggle.setValue(0);
-
 //SimControlText = (controlP5.Toggle) hideLabel(controlP5.addTextlabel("SimControlText","Simulate on OSD",45,3));
-SimControlText = controlP5.addTextlabel("SimControlText","Simulate on OSD",45,3);
+SimControlText = controlP5.addTextlabel("SimControlText","Emulate FC",45,3);
 SimControlText.setGroup(SGControlBox);
 
 DEBUGGUI =  (controlP5.Toggle) hideLabel(controlP5.addToggle("DEBUGGUI"));
@@ -614,8 +624,8 @@ void ShowVideoVolts(float voltage){
 void ShowFlyTime(String FMinutes_Seconds){
 
   if (int(confItem[GetSetting("S_TIMER")].value()) > 0){
-  mapchar(0x9c, SimPosn[flyTimePosition]);
-  makeText(FMinutes_Seconds, SimPosn[flyTimePosition]+1);
+  mapchar(0x9c, SimPosn[onTimePosition]);
+  makeText(FMinutes_Seconds, SimPosn[onTimePosition]+1);
 }}
 
 void ShowOnTime(String Minutes_Seconds){
@@ -647,20 +657,44 @@ void ShowCurrentThrottlePosition(){
 
 void ShowLatLon(){
   if(confItem[GetSetting("S_COORDINATES")].value() > 0) {
-//  if(confItem[GetSetting("S_GPSCOORDTOP")].value() > 0) {
-  mapchar(0xca, SimPosn[MwGPSLatPositionTop]);
-  makeText(" 43.09486N", SimPosn[MwGPSLatPositionTop]+1);
-  mapchar(0xcb, SimPosn[MwGPSLonPositionTop]);
-  makeText(" 71.88970W", SimPosn[MwGPSLonPositionTop]+1);
-//  }
-//  else {
-//  mapchar(0xca, SimPosn[MwGPSLatPosition]);
-//  makeText(" 43.09486N", SimPosn[MwGPSLatPosition]+1);
-//  mapchar(0xcb, SimPosn[MwGPSLonPosition]);
-//  makeText(" 71.88970W", SimPosn[MwGPSLonPosition]+1);
-//  }
+    String lat=" 71.88970S";
+    String lon=" 71.88970W";
+
+    float t1=GPSstartlat;
+    t1=t1/10000000;
+    String latsign="N";
+    if (t1<0) latsign="S";
+    lat = " "+t1;
+    while (lat.length()<9){
+      lat+=" ";
+    }
+    lat=lat.substring(0,9);
+    lat=lat+latsign;
+
+    float t2=GPSstartlon;
+    t2=t2/10000000;
+    String lonsign="E";
+    if (t2<0){
+      lonsign="W";
+      t2=-t2;
+    }
+    lon = " "+t2;
+    while (lon.length()<9){
+      lon+=" ";
+    }
+    lon=lon.substring(0,9);
+    lon=lon+lonsign;
+
+
+
+    mapchar(0xca, SimPosn[MwGPSLatPositionTop]);
+    makeText(lat, SimPosn[MwGPSLatPositionTop]+1);
+    mapchar(0xcb, SimPosn[MwGPSLonPositionTop]);
+    makeText(lon, SimPosn[MwGPSLonPositionTop]+1);
+//    makeText(" 71.88970W", SimPosn[MwGPSLonPositionTop]+1);
+  }
 }
-}
+
 
 void ShowDebug(){
   if(confItem[GetSetting("S_DEBUG")].value() > 0) {
@@ -759,8 +793,8 @@ void ShowVario(){
 void ShowRSSI(){
   String output = str(int(s_MRSSI.getValue()));
   if(confItem[GetSetting("S_DISPLAYRSSI")].value() > 0) {
-  mapchar(0xba, SimPosn[rssiPosition]);
-  makeText(output + "%", SimPosn[rssiPosition]+1);
+  mapchar(0xba, SimPosn[rssiPosition]-1);
+  makeText(output + "%", SimPosn[rssiPosition]);
 }}
 
 void ShowAPstatus(){
@@ -899,7 +933,7 @@ void displayHeading()
 
 
 void SimulateTimer(){
-  if (SimPosn[flyTimePosition]==0x3FF){
+  if (SimPosn[onTimePosition]==0x3FF){
      return;
   }
 
@@ -1013,6 +1047,10 @@ void displayMode()
       mapchar(0xb6,SimPosn[ModePosition]+1);
       mapchar(0x30,SimPosn[ModePosition]+2);
     }
+    else if((SimModebits&mode_air) >0){
+      mapchar(0xea,SimPosn[ModePosition]+30);
+      mapchar(0xeb,SimPosn[ModePosition]+31);
+    }
     else if((SimModebits&mode_stable) >0){
       mapchar(0xac,SimPosn[ModePosition]);
       mapchar(0xad,SimPosn[ModePosition]+1);
@@ -1021,16 +1059,15 @@ void displayMode()
       mapchar(0xc4,SimPosn[ModePosition]);
       mapchar(0xc5,SimPosn[ModePosition]+1);
     }
+    else if((SimModebits&mode_acroplus) >0){
+      mapchar(0xae,SimPosn[ModePosition]);
+      mapchar(0x89,SimPosn[ModePosition]+1);
+    }
     else{
       mapchar(0xae,SimPosn[ModePosition]);
       mapchar(0xaf,SimPosn[ModePosition]+1);
     }
-    
-    if((SimModebits&mode_air) >0){
-      mapchar(0xea,SimPosn[ModePosition]+2);
-      mapchar(0xeb,SimPosn[ModePosition]+3);
-    }
-  }
+   }
 
 }
 }
@@ -1070,7 +1107,7 @@ if (SimPosn[horizonPosition]<0x3FF){
       if(X < 3 || X >5 || (Y/9) != 4 || confItem[GetSetting("S_DISPLAY_HORIZON_BR")].value() == 0)
       	mapchar(0x80+(Y%9), pos);
       if(Y>=9 && (Y%9) == 0)
-        mapchar(0x89, pos-30);
+        mapchar(0x20, pos-30);
     }
   }
   if(confItem[GetSetting("S_HORIZON_ELEVATION")].value() > 0) {
@@ -1081,37 +1118,36 @@ if (SimPosn[horizonPosition]<0x3FF){
     Y += 31;
     if(Y >= 0 && Y <= 81) {
       int pos = SimPosn[horizonPosition] - 2*LINE + LINE*(Y/9) -4 - 2*LINE + X;
-//      int pos = 30*(2+Y/9) + 10 + X;
       if(X < 3 || X >5 || (Y/9) != 4 || confItem[GetSetting("S_DISPLAY_HORIZON_BR")].value() == 0)
         mapchar(0x80+(Y%9), pos);
       if(Y>=9 && (Y%9) == 0)
-        mapchar(0x89, pos-30);
+        mapchar(0x20, pos-30);
     }
-    Y += 20;
-    if(Y >= 0 && Y <= 81) {
+    Y+=20;
+     if(Y >= 0 && Y <= 81) {
       int pos = SimPosn[horizonPosition] - 2*LINE + LINE*(Y/9) -4 - 2*LINE + X;
-//      int pos = 30*(2+Y/9) + 10 + X;
       if(X < 3 || X >5 || (Y/9) != 4 || confItem[GetSetting("S_DISPLAY_HORIZON_BR")].value() == 0)
         mapchar(0x80+(Y%9), pos);
       if(Y>=9 && (Y%9) == 0)
-        mapchar(0x89, pos-30);
+        mapchar(0x20, pos-30);
     }
+
   }}
 
 
   if(confItem[GetSetting("S_DISPLAY_HORIZON_BR")].value() > 0) {
     //Draw center screen
-    mapchar(0x7e, 224-30);
-    mapchar(0x26, 224-30-1);
-    mapchar(0xbc, 224-30+1);
+    mapchar(0x7e, SimPosn[horizonPosition]);
+    mapchar(0x26, SimPosn[horizonPosition]-1);
+    mapchar(0xbc, SimPosn[horizonPosition]+1);
   }
   }
   
   if (SimPosn[SideBarPosition]<0x3FF){
     if(confItem[GetSetting("S_WITHDECORATION")].value() > 0) {
       int centerpos = SimPosn[horizonPosition];
-      int hudwidth=  SimPosn[SideBarWidth] ;
-      int hudheight= SimPosn[SideBarHeight];
+      int hudwidth=  SimPosn[SideBarWidth]&0x0F ;
+      int hudheight= SimPosn[SideBarHeight]&0x0F;
       for(int X=-hudheight; X<=hudheight; X++) {
         mapchar(0x12,centerpos+hudwidth+(X*LINE));
         mapchar(0x12,centerpos-hudwidth+(X*LINE));
@@ -1131,8 +1167,11 @@ void ShowSideBarArrows(){
     return;
   if(confItem[GetSetting("S_SIDEBARTOPS")].value() > 0) {
     int hudwidth=  SimPosn[SideBarWidth] ;
-    mapchar(0xCf,centerpos+hudwidth+(3*LINE));
-    mapchar(0xCf,centerpos-hudwidth+(3*LINE));
+    int hudheight= SimPosn[SideBarHeight];
+    mapchar(0xCf,centerpos+hudwidth+(hudheight*LINE));
+    mapchar(0xCf,centerpos-hudwidth+(hudheight*LINE));
+    mapchar(0xC9,centerpos+hudwidth-(hudheight*LINE));
+    mapchar(0xC9,centerpos-hudwidth-(hudheight*LINE));
   }
 }
 
@@ -1181,6 +1220,7 @@ void GetModes(){
   mode_stable = 0;
   mode_horizon = 0;
   mode_air = 0;
+  mode_acroplus = 0;
   mode_baro = 0;
   mode_mag = 0;
   mode_gpshome = 0;
@@ -1199,9 +1239,11 @@ void GetModes(){
     if (boxnames[c] == "CAMSTAB;") mode_camstab |= bit;
     if (boxnames[c] == "GPS HOME;") mode_gpshome |= bit;
     if (boxnames[c] == "GPS HOLD;") mode_gpshold |= bit;
-    if (boxnames[c] == "OSD SW;") mode_osd_switch |= bit;
     if (boxnames[c] == "MISSION;") mode_gpsmission |= bit;
     if (boxnames[c] == "AIR MODE;") mode_air |= bit;
+    if (boxnames[c] == "OSD SW;") mode_osd_switch |= bit;
+
+//    if (boxnames[c] == "CAMSTAB;") mode_acroplus |= bit;
    
     bit <<= 1L;
   }

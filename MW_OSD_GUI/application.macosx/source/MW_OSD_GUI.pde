@@ -47,7 +47,7 @@ import java.text.DecimalFormat;
 
 
 String MW_OSD_GUI_Version = "MWOSD R1.6 - NextGeneration";
-int MW_OSD_EEPROM_Version = 11;
+int MW_OSD_EEPROM_Version = 12;
 int CONFIGITEMS16 = 7;
 
 int  GPS_numSatPosition = 0;
@@ -62,7 +62,7 @@ int  MwHeadingGraphPosition = 8;
 int  MwAltitudePosition = 9;
 int  MwClimbRatePosition = 10;
 int  CurrentThrottlePosition = 11;
-int  flyTimePosition = 12;
+int  flyTimePosition = 12; //unused
 int  onTimePosition = 13;
 int  motorArmedPosition = 14;
 int  pitchAnglePosition = 15;
@@ -78,8 +78,8 @@ int  pMeterSumPosition = 24;
 int  horizonPosition = 25;
 int  SideBarPosition =26; 
 int  SideBarScrollPosition = 27;
-int  callSignPosition = 28;
-int  debugPosition = 29;
+int  SideBarHeight = 28;
+int  SideBarWidth = 29;
 int  gimbalPosition = 30;
 int  GPS_timePosition = 31;
 int  SportPosition = 32;
@@ -88,6 +88,10 @@ int  MapModePosition = 34;
 int  MapCenterPosition = 35;
 int  APstatusPosition = 36;
 int  wattPosition = 37;
+int  glidescopePosition = 38;
+int  callSignPosition = 39;
+int  debugPosition = 40;
+
 int GPSstartlat = 430948610;
 int GPSstartlon = -718897060;
 
@@ -151,7 +155,7 @@ ControlP5 SmallcontrolP5;
 ControlP5 ScontrolP5;
 ControlP5 FontGroupcontrolP5;
 ControlP5 GroupcontrolP5;
-Textlabel txtlblWhichcom,txtlblWhichbaud,txtmessage,mspmessage,eeindexmessage,analmessage; 
+Textlabel txtlblWhichcom,txtlblWhichbaud,txtmessage,mspmessage,eeindexmessage,processingmessage,analmessage; 
 Textlabel txtlblLayoutTxt,txtlblLayoutEnTxt, txtlblLayoutHudTxt; 
 Textlabel txtlblLayoutTxt2,txtlblLayoutEnTxt2, txtlblLayoutHudTxt2; 
 ListBox commListbox,baudListbox;
@@ -196,6 +200,10 @@ int WriteConfigMSPMillis=0;
 int FontMSPMillis=0;
 int rssical=99;
 int eedataOSDtemp = 0;
+int processingtxtval = 0;
+int oldseconds=0;
+int framerate=0;
+String frameratetxt="";
 
 // XML config editorvariables
 int hudeditposition=0;
@@ -224,7 +232,7 @@ int Simtype=0;
 int Donate=2;
 int DonateMessage=1;
 int StartupMessage=0;
-int FrameRate=30;
+int FrameRate=5;
 
 int init_com = 0;
 int commListMax = 0;
@@ -235,6 +243,7 @@ int[] debug = new int[4];
 String progresstxt="";
 String msptxt="";
 String eeindextxt="";
+String processingtxt="";
 String analtxt="";
 int analSENSORS=5;
 int xcolor=20;  
@@ -247,9 +256,10 @@ int ConfigVALUE = -1;
 // Box locations -------------------------------------------------------------------------
 int Col1Width = 180;        int Col2Width = 200;    int Col3Width = 165;
 
-int windowsX    = 1041+Col3Width+5;       int windowsY    =613; //578;        //995; //573;
-//int windowsX    = 1041;       int windowsY    =578;        //995; //573;
-//int windowsX    = 1200;       int windowsY    =800;        //995; //573;
+// Window Size -------------------------------------------------------------------------
+int windowsX    = 1041+Col3Width+5;
+int windowsY    =578;
+
 int xGraph      = 10;         int yGraph      = 35;
 int xObj        = 520;        int yObj        = 293; //900,450
 int xCompass    = 920;        int yCompass    = 341; //760,336
@@ -677,7 +687,7 @@ Button buttonIMPORT,buttonSAVE,buttonREAD,buttonRESET,buttonWRITE,buttonRESTART,
 Button buttonLUP, buttonLDOWN, buttonLLEFT, buttonLRIGHT, buttonLPOSUP, buttonLPOSDOWN;
 Button buttonLHUDUP,buttonLPOSHUDDOWN,buttonLPOSEN, buttonLSET, buttonLADD, buttonLSAVE, buttonLCANCEL;
 Button buttonLEW,buttonSetRSSIlow,buttonSetRSSIhigh,buttonSetHWCurrentSensor,buttonSetHWCurrentSensorCancel,buttonSetHWCurrentSensorSave;
-Button buttonGUIDELINK, buttonFAQLINK, buttonCALIBLINK, buttonSUPPORTLINK, buttonDONATELINK;
+Button buttonGUIDELINK, buttonFAQLINK, buttonCALIBLINK, buttonSUPPORTLINK, buttonDONATELINK, buttonMWOSD, buttonGITHUB;
 // Buttons------------------------------------------------------------------------------------------------------------------
 
 // Toggles------------------------------------------------------------------------------------------------------------------
@@ -847,6 +857,7 @@ DONATEimage  = loadImage("DON_def.png");
   txtmessage = controlP5.addTextlabel("txtmessage","",3,295); // textdebug
   mspmessage = controlP5.addTextlabel("mspmessage","",XHUD+735,155); // textdebug
   eeindexmessage = controlP5.addTextlabel("eeindexmessage","",XHUD+735,175); // eeindexdebug
+  processingmessage = controlP5.addTextlabel("processingmessage","",XHUD+735+70,155); // eeindexdebug
 
 
   analmessage = controlP5.addTextlabel("analmessage","",XHUD+735,255); //
@@ -1002,6 +1013,10 @@ buttonGPSTIMELINK = controlP5.addButton("GPSTIMELINK",1,200,10,125,16);
 buttonGPSTIMELINK.setCaptionLabel("GPS Requirements").setGroup(G_LINKS);
 buttonSPORTLINK = controlP5.addButton("SPORTLINK",1,200,30,125,16);
 buttonSPORTLINK.setCaptionLabel("FRSKY Requirements").setGroup(G_LINKS);
+buttonMWOSD = controlP5.addButton("MWOSDLINK",1,200,50,125,16);
+buttonMWOSD.setCaptionLabel("MWOSD website").setGroup(G_LINKS);
+buttonGITHUB = controlP5.addButton("GITHUBLINK",1,200,70,125,16);
+buttonGITHUB.setCaptionLabel("LATEST SOFTWARE").setGroup(G_LINKS);
 buttonDONATELINK = controlP5.addButton("DONATELINK",1,XLINKS+30,YLINKS+217, 80, 20).setVisible(false);
 //   image(DONATEimage,XLINKS+20,YLINKS+207, 100, 40); 
 
@@ -1203,9 +1218,40 @@ void draw() {
 //  debug[2]=OSD_S_HUDSW1;
 //  debug[3]=OSD_S_HUDSW2;
 // Initial setup
+  int seconds = second();
   time=millis();
   progresstxt="";
+  switch(processingtxtval) {
+    case 0:
+      processingtxt="/";
+      break;
+    case 1:
+      processingtxt="-";
+      break;
+    case 2:
+      processingtxt="\\";
+      break;
+    case 3:
+      processingtxt="|";
+      break;
+  }
+  processingtxtval++;
 
+  if (seconds!=oldseconds){
+    frameratetxt=str(framerate);
+    framerate=0;
+    oldseconds=seconds;
+  }
+  framerate++;
+  processingtxt="Framerate: "+ frameratetxt +" "+ processingtxt;
+
+  if (processingtxtval>3) processingtxtval=0;
+  if (int(DEBUGGUI.getValue())!=1){
+    processingtxt="";
+  }
+  
+  
+  
   if (commListbox.isOpen())
     baudListbox.close();
   else
@@ -1271,6 +1317,7 @@ void draw() {
     txtmessage.setValue(progresstxt);
     mspmessage.setValue(msptxt);
     eeindexmessage.setValue(eeindextxt);
+    processingmessage.setValue(processingtxt);
     
 // txtlblconfItem[0].setValue(""); huh?
 
@@ -1287,7 +1334,7 @@ void draw() {
   txtlblLayoutHudTxt.setValue(" : "+hudid);
   LEW.setLabel("Layout Editor for profile: "+hudid+" - "+CONFIGHUDNAME[hudid]);
   if (CONFIGHUDEN[hudid][hudeditposition]>0)
-    txtlblLayoutEnTxt.setValue(" : Enabled");
+    txtlblLayoutEnTxt.setValue(" : Enabled "+(CONFIGHUD[hudid][hudeditposition]&0x01FF));
   else
     txtlblLayoutEnTxt.setValue(" : Disabled");
 
@@ -1325,8 +1372,10 @@ void draw() {
     MakePorts();
     msptxt="";
     eeindextxt="";
+//    processingtxt="";
     analmessage.setValue("");
     eeindexmessage.setValue("");
+    processingmessage.setValue("");
     for (int i=0; i<analSENSORS; i++) {
       txtlblanal[i].setValue("");
     }
@@ -1417,7 +1466,6 @@ void draw() {
 
   image(GUIBackground,0, 0, windowsX, windowsY); 
 
-  int seconds = second();
   if (((seconds&0x1F)!= 0)&&(Donate>0)){
    image(DONATEimage,XLINKS+20,YLINKS+207, 100, 40);  
   }  
@@ -1497,12 +1545,14 @@ void draw() {
   ShowDirection();
  }
  
+ 
   ShowMapMode();
     
   MatchConfigs();
   MakePorts();
   
   ShowSPort();
+ 
   
   if ((ClosePort ==true)&& (PortWrite == false)){ //&& (init_com==1)
     ClosePort();
@@ -1715,6 +1765,8 @@ public void controlEvent(ControlEvent theEvent) {
 
 
 void mapchar(int address, int screenAddress){
+  if (screenAddress>480)
+    return;
   int placeX = (screenAddress % 30) * 12;
   int placeY = (screenAddress / 30) * 18;
 
@@ -1769,6 +1821,10 @@ public void bLUP() {
   int ii = CONFIGHUD[i][hudeditposition]&0x1FF;
   ii-=30;
   ii=constrain(ii,0,419);
+  if(hudeditposition==SideBarHeight)
+    ii=constrain(ii,1,7);
+  if(hudeditposition==SideBarWidth)
+    ii=constrain(ii,1,14);
   println(ii);
   CONFIGHUD[i][hudeditposition]&=0xFE00;
   CONFIGHUD[i][hudeditposition]|=ii;
@@ -1785,10 +1841,13 @@ public void bLDOWN() {
   int ii = CONFIGHUD[i][hudeditposition]&0x1FF;
   ii+=30;
   ii=constrain(ii,0,419);
+  if(hudeditposition==SideBarHeight)
+    ii=constrain(ii,1,7);
+  if(hudeditposition==SideBarWidth)
+    ii=constrain(ii,1,14);
   println(ii);
   CONFIGHUD[i][hudeditposition]&=0xFE00;
   CONFIGHUD[i][hudeditposition]|=ii;
-//  CONFIGHUD[i][hudeditposition]+=30;
 }
 
 public void bLLEFT() {
@@ -1802,6 +1861,10 @@ public void bLLEFT() {
   int ii = CONFIGHUD[i][hudeditposition]&0x1FF;
   ii-=1;
   ii=constrain(ii,0,419);
+  if(hudeditposition==SideBarHeight)
+    ii=constrain(ii,1,7);
+  if(hudeditposition==SideBarWidth)
+    ii=constrain(ii,1,14);
   println(ii);
   CONFIGHUD[i][hudeditposition]&=0xFE00;
   CONFIGHUD[i][hudeditposition]|=ii;
@@ -1818,6 +1881,10 @@ public void bLRIGHT() {
   int ii = CONFIGHUD[i][hudeditposition]&0x1FF;
   ii+=1;
   ii=constrain(ii,0,419);
+  if(hudeditposition==SideBarHeight)
+    ii=constrain(ii,1,7);
+  if(hudeditposition==SideBarWidth)
+    ii=constrain(ii,1,14);
   println(ii);
   CONFIGHUD[i][hudeditposition]&=0xFE00;
   CONFIGHUD[i][hudeditposition]|=ii;
@@ -2174,10 +2241,10 @@ public void LoadConfig(){
     BaudRate = 115200;
     Title = MW_OSD_GUI_Version;
     Passthroughcomm = 0;
-    AutoSimulator = 0;
+    AutoSimulator = 1;
     AutoDebugGUI = 1;
     Simtype=1;
-    FrameRate = 15;
+    FrameRate = 7;
     StartupMessage = 0;
     Donate = 2;
     updateConfig();
@@ -2320,8 +2387,11 @@ public void GPSTIMELINK(){
 public void SPORTLINK(){
  link("https://github.com/ShikOfTheRa/scarab-osd/blob/master/OTHER/DOCUMENTATION/Frsky_SPort.md"); 
 }
-public void CODELINK(){
- link("https://www.mwosd.com/"); 
+public void MWOSDLINK(){
+ link("http://www.mwosd.com"); 
+}
+public void GITHUBLINK(){
+ link("https://github.com/ShikOfTheRa/scarab-osd/releases"); 
 }
 public void FAQLINK(){
  link("https://github.com/ShikOfTheRa/scarab-osd/blob/master/OTHER/DOCUMENTATION/FAQ.md"); 
@@ -2398,6 +2468,7 @@ void initxml(){
 
 
 void xmlsavelayout(){
+  XML[] xmlhuddescription = xml.getChildren("DESCRIPTION");
   XML[] allhudoptions = xml.getChildren("LAYOUT");
   int i=0;
 
@@ -2405,6 +2476,9 @@ void xmlsavelayout(){
     for (int hudindex = 0; hudindex < hudoptions; hudindex++) {
       allhudoptions[i].setInt("enabled",CONFIGHUDEN[hud][hudindex]);
       allhudoptions[i].setInt("value",CONFIGHUD[hud][hudindex]&0x3FF);
+      String text = xmlhuddescription[hudindex].getString("desc");
+//      String text=str(i);
+      allhudoptions[i].setString("desc",text);
       i++;  
     }    
   }
